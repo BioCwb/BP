@@ -158,6 +158,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
         if (!gameState || gameState.host !== user.uid) return;
 
         let intervalId: number | undefined;
+        let timeoutId: number | undefined;
 
         if (gameState.status === 'waiting' && Object.keys(gameState.players).length > 0) {
             intervalId = window.setInterval(async () => {
@@ -198,7 +199,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                 });
             }, 1000);
         } else if (gameState.status === 'ended') {
-             setTimeout(async () => {
+             timeoutId = window.setTimeout(async () => {
                 const batch = db.batch();
                 batch.update(gameDocRef, { status: 'waiting', drawnNumbers: [], prizePool: 0, winners: [], countdown: 15, lastWinnerAnnouncement: `Last winner(s): ${gameState.winners.map(w => w.displayName).join(', ')}`});
                 
@@ -212,7 +213,10 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
             }, 10000); // 10 second delay before new round
         }
         
-        return () => clearInterval(intervalId);
+        return () => {
+            clearInterval(intervalId);
+            clearTimeout(timeoutId);
+        };
 
     }, [gameState, user.uid, gameDocRef]);
     
@@ -273,7 +277,9 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                 if (progressA !== progressB) {
                     return progressA - progressB;
                 }
-                return b.cardCount - a.cardCount;
+                const cardCountA = typeof a.cardCount === 'number' ? a.cardCount : 0;
+                const cardCountB = typeof b.cardCount === 'number' ? b.cardCount : 0;
+                return cardCountB - cardCountA;
             });
     }, [gameState.players]);
 

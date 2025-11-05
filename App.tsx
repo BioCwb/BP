@@ -215,13 +215,22 @@ export default function App() {
     }
   };
 
+  // Effect to manage the timeout for resendStatus, ensuring it's cleaned up properly.
+  useEffect(() => {
+    if (resendStatus === 'sent') {
+        const timer = setTimeout(() => {
+            setResendStatus('idle');
+        }, 5000);
+        return () => clearTimeout(timer);
+    }
+  }, [resendStatus]);
+
   const handleResendVerification = async () => {
     if (!needsVerification) return;
     try {
         // FIX: Switched from v9 sendEmailVerification(user) to v8 user.sendEmailVerification()
         await needsVerification.sendEmailVerification();
         setResendStatus('sent');
-        setTimeout(() => setResendStatus('idle'), 5000);
     } catch (error) {
         setError("Failed to resend verification email.");
     }
