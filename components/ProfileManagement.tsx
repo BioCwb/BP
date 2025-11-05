@@ -1,6 +1,10 @@
 import React, { useState } from 'react';
-// FIX: Use Firebase v8 style type import for User and remove v9 function imports.
-import type { User } from 'firebase';
+import {
+    type User,
+    updateProfile,
+    reauthenticateWithCredential,
+    updatePassword
+} from 'firebase/auth';
 import { auth, EmailAuthProvider } from '../firebase/config';
 import { InputField } from './InputField';
 import { UserIcon } from './icons/UserIcon';
@@ -35,8 +39,7 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, onBa
     if (!auth.currentUser) return;
 
     try {
-      // FIX: Use v8 updateProfile method syntax.
-      await auth.currentUser.updateProfile({ displayName });
+      await updateProfile(auth.currentUser, { displayName });
       setSuccess('Profile updated successfully!');
     } catch (err) {
       setError('Failed to update profile. Please try again.');
@@ -63,10 +66,8 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, onBa
 
     try {
       const credential = EmailAuthProvider.credential(auth.currentUser.email, currentPassword);
-      // FIX: Use v8 reauthenticateWithCredential method syntax.
-      await auth.currentUser.reauthenticateWithCredential(credential);
-      // FIX: Use v8 updatePassword method syntax.
-      await auth.currentUser.updatePassword(newPassword);
+      await reauthenticateWithCredential(auth.currentUser, credential);
+      await updatePassword(auth.currentUser, newPassword);
 
       setPasswordSuccess('Password changed successfully!');
       setCurrentPassword('');

@@ -1,8 +1,16 @@
 
 import React, { useState, useEffect } from 'react';
 import { auth, googleProvider } from './firebase/config';
-// FIX: Use Firebase v8 style type import for User and remove v9 function imports.
-import type { User } from 'firebase';
+import {
+    onAuthStateChanged,
+    signInWithEmailAndPassword,
+    signOut,
+    signInWithPopup,
+    createUserWithEmailAndPassword,
+    updateProfile,
+    sendEmailVerification,
+    type User
+} from 'firebase/auth';
 import { AuthForm } from './components/AuthForm';
 import { InputField } from './components/InputField';
 import { UserIcon } from './components/icons/UserIcon';
@@ -39,8 +47,7 @@ export default function App() {
 
 
   useEffect(() => {
-    // FIX: Use v8 onAuthStateChanged method syntax.
-    const unsubscribe = auth.onAuthStateChanged((user) => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
       if (user && (user.emailVerified || user.providerData.some(p => p.providerId !== 'password'))) {
         setCurrentUser(user);
         setNeedsVerification(null);
@@ -63,12 +70,10 @@ export default function App() {
       return;
     }
     try {
-      // FIX: Use v8 signInWithEmailAndPassword method syntax.
-      const userCredential = await auth.signInWithEmailAndPassword(loginEmail, loginPassword);
+      const userCredential = await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
       if (userCredential.user && !userCredential.user.emailVerified) {
         setNeedsVerification(userCredential.user);
-        // FIX: Use v8 signOut method syntax.
-        await auth.signOut(); // Sign out the unverified user
+        await signOut(auth); // Sign out the unverified user
       }
       // If verified, onAuthStateChanged will handle setting the user
     } catch (err: any) {
@@ -92,8 +97,7 @@ export default function App() {
     setNeedsVerification(null);
     setShowVerificationMessage(false);
     try {
-        // FIX: Use v8 signInWithPopup method syntax.
-        await auth.signInWithPopup(googleProvider);
+        await signInWithPopup(auth, googleProvider);
         // onAuthStateChanged will handle successful login
     } catch (err: any) {
         if (err.code !== 'auth/popup-closed-by-user') {
@@ -114,21 +118,17 @@ export default function App() {
       return;
     }
     try {
-      // FIX: Use v8 createUserWithEmailAndPassword method syntax.
-      const userCredential = await auth.createUserWithEmailAndPassword(registerEmail, registerPassword);
+      const userCredential = await createUserWithEmailAndPassword(auth, registerEmail, registerPassword);
       
       if (userCredential.user) {
-        // FIX: Use v8 updateProfile method syntax.
-        await userCredential.user.updateProfile({
+        await updateProfile(userCredential.user, {
           displayName: registerUsername
         });
         
-        // FIX: Use v8 sendEmailVerification method syntax.
-        await userCredential.user.sendEmailVerification();
+        await sendEmailVerification(userCredential.user);
       }
       
-      // FIX: Use v8 signOut method syntax.
-      await auth.signOut(); // Sign out until they verify
+      await signOut(auth); // Sign out until they verify
       
       // Reset form and show verification message
       setShowVerificationMessage(true);
@@ -156,8 +156,7 @@ export default function App() {
   const handleResendVerification = async () => {
     if (!needsVerification) return;
     try {
-        // FIX: Use v8 sendEmailVerification method syntax.
-        await needsVerification.sendEmailVerification();
+        await sendEmailVerification(needsVerification);
         setResendStatus('sent');
         setTimeout(() => setResendStatus('idle'), 5000); // Reset status after 5s
     } catch (error) {
@@ -167,8 +166,7 @@ export default function App() {
 
   const handleLogout = async () => {
     try {
-      // FIX: Use v8 signOut method syntax.
-      await auth.signOut();
+      await signOut(auth);
     } catch (error) {
       console.error("Error signing out: ", error);
       setError("Failed to log out.");

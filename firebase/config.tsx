@@ -1,5 +1,6 @@
-import firebase from "firebase/app";
-import "firebase/auth";
+// FIX: Use namespace import for firebase/app to address a potential module resolution issue where 'initializeApp' was not found as a named export.
+import * as firebaseApp from "firebase/app";
+import { getAuth, GoogleAuthProvider, EmailAuthProvider } from "firebase/auth";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -13,9 +14,9 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-const app = firebase.initializeApp(firebaseConfig);
+const app = firebaseApp.initializeApp(firebaseConfig);
 
-// Export auth instance and providers using v8 compat style
-export const auth = firebase.auth();
-export const googleProvider = new firebase.auth.GoogleAuthProvider();
-export const EmailAuthProvider = firebase.auth.EmailAuthProvider;
+// Export auth instance and providers using v9 modular style
+export const auth = getAuth(app);
+export const googleProvider = new GoogleAuthProvider();
+export { EmailAuthProvider };
