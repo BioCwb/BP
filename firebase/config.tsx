@@ -1,8 +1,8 @@
-// FIX: Use namespace import for firebase/app to address a potential module resolution issue where 'initializeApp' was not found as a named export.
-import * as firebaseApp from "firebase/app";
-import { getAuth, GoogleAuthProvider, EmailAuthProvider } from "firebase/auth";
+// FIX: Switched to firebase/compat imports to support v8 syntax, resolving "no exported member" errors.
+import firebase from 'firebase/compat/app';
+import 'firebase/compat/auth';
+import 'firebase/compat/firestore';
 
-// Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyAEYYhhN2sH42vkP7OVJoe8Wt7wy6-M6w0",
   authDomain: "bongo-a6564.firebaseapp.com",
@@ -13,10 +13,21 @@ const firebaseConfig = {
   measurementId: "G-6608DWZENB"
 };
 
-// Initialize Firebase
-const app = firebaseApp.initializeApp(firebaseConfig);
+// Initialize Firebase App
+// FIX: Use v8 compat initialization.
+if (!firebase.apps.length) {
+    firebase.initializeApp(firebaseConfig);
+}
 
-// Export auth instance and providers using v9 modular style
-export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
-export { EmailAuthProvider };
+
+// Initialize and export Firebase services
+// FIX: Export v8-style services.
+export const auth = firebase.auth();
+export const db = firebase.firestore();
+
+// Export providers and utilities
+// FIX: Export v8-style providers and FieldValue methods.
+export const googleProvider = new firebase.auth.GoogleAuthProvider();
+export const EmailAuthProvider = firebase.auth.EmailAuthProvider;
+export const arrayUnion = firebase.firestore.FieldValue.arrayUnion;
+export const increment = firebase.firestore.FieldValue.increment;

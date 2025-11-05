@@ -1,15 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { auth, googleProvider } from './firebase/config';
-import {
-    onAuthStateChanged,
-    signInWithEmailAndPassword,
-    signOut,
-    signInWithPopup,
-    createUserWithEmailAndPassword,
-    updateProfile,
-    sendEmailVerification,
-    type User
+import { auth, googleProvider, db } from './firebase/config';
+// FIX: Removed firebase v9 modular imports as they are not compatible with the project setup, causing "no exported member" errors.
+// The functions are now called using the v8 syntax (e.g., auth.onAuthStateChanged).
+import { 
+  type User
 } from 'firebase/auth';
 import { AuthForm } from './components/AuthForm';
 import { InputField } from './components/InputField';
@@ -18,15 +13,24 @@ import { LockIcon } from './components/icons/LockIcon';
 import { EmailIcon } from './components/icons/EmailIcon';
 import { GoogleIcon } from './components/icons/GoogleIcon';
 import { ProfileManagement } from './components/ProfileManagement';
+import { GameLobby } from './components/GameLobby';
+import { BingoGame } from './components/BingoGame';
 
 type AuthMode = 'login' | 'register';
-type ViewMode = 'welcome' | 'profile';
+type ViewMode = 'auth' | 'lobby' | 'game' | 'profile';
+
+export interface UserData {
+  displayName: string;
+  email: string;
+  fichas: number;
+}
 
 export default function App() {
   const [authMode, setAuthMode] = useState<AuthMode>('login');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [viewMode, setViewMode] = useState<ViewMode>('welcome');
+  const [viewMode, setViewMode] = useState<ViewMode>('auth');
 
   // Login State
   const [loginEmail, setLoginEmail] = useState('');
@@ -47,20 +51,52 @@ export default function App() {
 
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    // FIX: Switched from v9 onAuthStateChanged(auth, ...) to v8 auth.onAuthStateChanged(...)
+    const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
       if (user && (user.emailVerified || user.providerData.some(p => p.providerId !== 'password'))) {
         setCurrentUser(user);
+        
+        // FIX: Switched from v9 doc(db, ...) to v8 db.collection(...).doc(...)
+        const userDocRef = db.collection("users").doc(user.uid);
+        // FIX: Switched from v9 getDoc(...) to v8 userDocRef.get()
+        const docSnap = await userDocRef.get();
+        // FIX: Switched from v9 docSnap.exists() to v8 docSnap.exists
+        if (!docSnap.exists) {
+             const newUserData: UserData = {
+                displayName: user.displayName || 'BingoPlayer',
+                email: user.email!,
+                fichas: 100 // Welcome bonus
+            };
+            // FIX: Switched from v9 setDoc(...) to v8 userDocRef.set(...)
+            await userDocRef.set(newUserData);
+        }
+        
+        setViewMode('lobby');
         setNeedsVerification(null);
       } else {
         setCurrentUser(null);
-      }
-      if (!user) {
-        setViewMode('welcome'); // Reset view on logout
+        setUserData(null);
+        setViewMode('auth');
       }
       setLoading(false);
     });
-    return () => unsubscribe();
+    return () => unsubscribeAuth();
   }, []);
+  
+  useEffect(() => {
+    if (currentUser?.uid) {
+      // FIX: Switched from v9 doc(db, ...) to v8 db.collection(...).doc(...)
+      const userDocRef = db.collection("users").doc(currentUser.uid);
+      // FIX: Switched from v9 onSnapshot(...) to v8 userDocRef.onSnapshot(...)
+      const unsubscribe = userDocRef.onSnapshot((doc) => {
+        // FIX: Switched from v9 doc.exists() to v8 doc.exists
+        if (doc.exists) {
+          setUserData(doc.data() as UserData);
+        }
+      });
+      return () => unsubscribe();
+    }
+  }, [currentUser?.uid]);
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -70,25 +106,15 @@ export default function App() {
       return;
     }
     try {
-      const userCredential = await signInWithEmailAndPassword(auth, loginEmail, loginPassword);
+      // FIX: Switched from v9 signInWithEmailAndPassword(auth, ...) to v8 auth.signInWithEmailAndPassword(...)
+      const userCredential = await auth.signInWithEmailAndPassword(loginEmail, loginPassword);
       if (userCredential.user && !userCredential.user.emailVerified) {
         setNeedsVerification(userCredential.user);
-        await signOut(auth); // Sign out the unverified user
+        // FIX: Switched from v9 signOut(auth) to v8 auth.signOut()
+        await auth.signOut();
       }
-      // If verified, onAuthStateChanged will handle setting the user
     } catch (err: any) {
-      switch (err.code) {
-        case 'auth/user-not-found':
-        case 'auth/invalid-credential':
-          setError('Invalid email or password.');
-          break;
-        case 'auth/wrong-password':
-          setError('Incorrect password.');
-          break;
-        default:
-          setError('Failed to log in. Please try again.');
-          break;
-      }
+      setError('Invalid email or password.');
     }
   };
   
@@ -97,11 +123,12 @@ export default function App() {
     setNeedsVerification(null);
     setShowVerificationMessage(false);
     try {
-        await signInWithPopup(auth, googleProvider);
-        // onAuthStateChanged will handle successful login
+        // FIX: Switched from v9 signInWithPopup(auth, ...) to v8 auth.signInWithPopup(...)
+        await auth.signInWithPopup(googleProvider);
     } catch (err: any) {
         if (err.code !== 'auth/popup-closed-by-user') {
             setError('Failed to sign in with Google. Please try again.');
+            console.error(err);
         }
     }
   };
@@ -118,146 +145,90 @@ export default function App() {
       return;
     }
     try {
-      const userCredential = await createUserWithEmailAndPassword(auth, registerEmail, registerPassword);
+      // FIX: Switched from v9 createUserWithEmailAndPassword(auth, ...) to v8 auth.createUserWithEmailAndPassword(...)
+      const userCredential = await auth.createUserWithEmailAndPassword(registerEmail, registerPassword);
+      const user = userCredential.user;
       
-      if (userCredential.user) {
-        await updateProfile(userCredential.user, {
-          displayName: registerUsername
-        });
+      if (user) {
+        // FIX: Switched from v9 updateProfile(user, ...) to v8 user.updateProfile(...)
+        await user.updateProfile({ displayName: registerUsername });
         
-        await sendEmailVerification(userCredential.user);
+        const newUserData: UserData = {
+          displayName: registerUsername,
+          email: registerEmail,
+          fichas: 100 // Welcome bonus
+        };
+        // FIX: Switched from v9 setDoc(doc(db,...),...) to v8 db.collection(...).doc(...).set(...)
+        await db.collection("users").doc(user.uid).set(newUserData);
+        
+        // FIX: Switched from v9 sendEmailVerification(user) to v8 user.sendEmailVerification()
+        await user.sendEmailVerification();
       }
       
-      await signOut(auth); // Sign out until they verify
+      // FIX: Switched from v9 signOut(auth) to v8 auth.signOut()
+      await auth.signOut();
       
-      // Reset form and show verification message
       setShowVerificationMessage(true);
-      setRegisterUsername('');
-      setRegisterEmail('');
-      setRegisterPassword('');
-      setRegisterConfirmPassword('');
       setAuthMode('login');
 
     } catch (err: any) {
-      switch (err.code) {
-        case 'auth/email-already-in-use':
+        if (err.code === 'auth/email-already-in-use') {
           setError('This email is already registered.');
-          break;
-        case 'auth/weak-password':
+        } else if (err.code === 'auth/weak-password') {
           setError('Password should be at least 6 characters.');
-          break;
-        default:
+        } else {
           setError('Failed to create an account. Please try again.');
-          break;
-      }
+        }
     }
   };
 
   const handleResendVerification = async () => {
     if (!needsVerification) return;
     try {
-        await sendEmailVerification(needsVerification);
+        // FIX: Switched from v9 sendEmailVerification(user) to v8 user.sendEmailVerification()
+        await needsVerification.sendEmailVerification();
         setResendStatus('sent');
-        setTimeout(() => setResendStatus('idle'), 5000); // Reset status after 5s
+        setTimeout(() => setResendStatus('idle'), 5000);
     } catch (error) {
-        setError("Failed to resend verification email. Please try again later.");
+        setError("Failed to resend verification email.");
     }
   };
 
   const handleLogout = async () => {
-    try {
-      await signOut(auth);
-    } catch (error) {
-      console.error("Error signing out: ", error);
-      setError("Failed to log out.");
-    }
+    // FIX: Switched from v9 signOut(auth) to v8 auth.signOut()
+    await auth.signOut();
   };
 
   const TabButton = ({ mode, children }: { mode: AuthMode; children: React.ReactNode }) => (
     <button
-      onClick={() => {
-        setAuthMode(mode);
-        setError(null);
-        setShowVerificationMessage(false);
-        setNeedsVerification(null);
-      }}
-      className={`w-1/2 py-3 text-center font-semibold transition-colors duration-300 focus:outline-none ${
-        authMode === mode
-          ? 'text-white border-b-2 border-purple-500'
-          : 'text-gray-400 hover:text-white'
-      }`}
+      onClick={() => { setAuthMode(mode); setError(null); setShowVerificationMessage(false); setNeedsVerification(null); }}
+      className={`w-1/2 py-3 text-center font-semibold transition-colors duration-300 focus:outline-none ${authMode === mode ? 'text-white border-b-2 border-purple-500' : 'text-gray-400 hover:text-white'}`}
     >
       {children}
     </button>
   );
   
-  const renderLoggedInView = () => {
-    if (!currentUser) return null;
-
-    if (viewMode === 'profile') {
-        return <ProfileManagement user={currentUser} onBack={() => setViewMode('welcome')} />;
-    }
-
-    return (
-        <div className="bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl p-8 text-center w-full max-w-md">
-            <h2 className="text-3xl font-bold text-white">Welcome, {currentUser.displayName || currentUser.email}!</h2>
-            <p className="text-gray-300 mt-2 mb-6">Ready to play?</p>
-            <div className="space-y-4">
-                 <button
-                    onClick={() => setViewMode('profile')}
-                    className="w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-semibold transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50"
-                 >
-                    Manage Profile
-                </button>
-                <button
-                    onClick={handleLogout}
-                    className="w-full py-3 px-4 bg-red-600 hover:bg-red-700 rounded-lg text-white font-semibold transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50"
-                >
-                    Logout
-                </button>
-            </div>
-        </div>
-    );
-  };
-  
-  const renderVerificationView = () => {
-    const email = needsVerification?.email;
-    return (
+  const renderVerificationView = () => (
       <div className="w-full max-w-md bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl p-8 text-center">
         <h2 className="text-3xl font-bold text-white mb-4">Verify Your Email</h2>
-        <p className="text-gray-300 mb-6">
-          Please check your inbox at <strong className="text-white">{email}</strong> and click the verification link to continue.
-        </p>
+        <p className="text-gray-300 mb-6">Please check your inbox at <strong className="text-white">{needsVerification?.email}</strong> and click the verification link.</p>
         <div className="space-y-4">
-            <button
-                onClick={handleResendVerification}
-                disabled={resendStatus === 'sent'}
-                className="w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-semibold transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50 disabled:bg-gray-600 disabled:cursor-not-allowed"
-            >
+            <button onClick={handleResendVerification} disabled={resendStatus === 'sent'} className="w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-semibold transition-colors duration-300 disabled:bg-gray-600 disabled:cursor-not-allowed">
                 {resendStatus === 'sent' ? 'Verification Sent!' : 'Resend Verification Email'}
             </button>
-            <button
-                onClick={() => setNeedsVerification(null)}
-                className="w-full py-3 px-4 bg-gray-600 hover:bg-gray-700 rounded-lg text-white font-semibold transition-colors duration-300"
-            >
+            <button onClick={() => setNeedsVerification(null)} className="w-full py-3 px-4 bg-gray-600 hover:bg-gray-700 rounded-lg text-white font-semibold">
                 Back to Login
             </button>
         </div>
         {error && <p className="mt-4 text-center text-red-400">{error}</p>}
       </div>
-    );
-  };
+  );
   
   const renderPostRegistrationView = () => (
       <div className="w-full max-w-md bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl p-8 text-center">
         <h2 className="text-3xl font-bold text-white mb-4">Registration Successful!</h2>
-        <p className="text-gray-300 mb-6">
-          A verification link has been sent to your email address. Please check your inbox to activate your account.
-        </p>
-        <button
-            onClick={() => setShowVerificationMessage(false)}
-            className="w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-semibold transition-colors duration-300"
-        >
+        <p className="text-gray-300 mb-6">A verification link has been sent to your email. Please check your inbox.</p>
+        <button onClick={() => setShowVerificationMessage(false)} className="w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-semibold">
             Got it, take me to Login
         </button>
       </div>
@@ -269,123 +240,67 @@ export default function App() {
               <TabButton mode="login">Login</TabButton>
               <TabButton mode="register">Register</TabButton>
             </div>
-
             <div className="p-8">
               {authMode === 'login' ? (
                 <>
                   <AuthForm title="Welcome Back!" onSubmit={handleLoginSubmit} buttonText="Login">
-                    <InputField
-                      id="login-email"
-                      label="Email"
-                      type="email"
-                      value={loginEmail}
-                      onChange={(e) => setLoginEmail(e.target.value)}
-                      placeholder="Enter your email"
-                      icon={<EmailIcon className="w-5 h-5 text-gray-400" />}
-                    />
-                    <InputField
-                      id="login-password"
-                      label="Password"
-                      type="password"
-                      value={loginPassword}
-                      onChange={(e) => setLoginPassword(e.target.value)}
-                      placeholder="Enter your password"
-                      icon={<LockIcon className="w-5 h-5 text-gray-400" />}
-                    />
+                    <InputField id="login-email" label="Email" type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="Enter your email" icon={<EmailIcon />} />
+                    <InputField id="login-password" label="Password" type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="Enter your password" icon={<LockIcon />} />
                   </AuthForm>
                   <div className="relative flex py-5 items-center">
                     <div className="flex-grow border-t border-gray-600"></div>
-                    <span className="flex-shrink mx-4 text-gray-400 text-sm">Or continue with</span>
+                    <span className="flex-shrink mx-4 text-gray-400 text-sm">Or</span>
                     <div className="flex-grow border-t border-gray-600"></div>
                   </div>
-                  <button
-                    onClick={handleGoogleSignIn}
-                    aria-label="Sign in with Google"
-                    className="w-full flex items-center justify-center py-2.5 px-4 bg-white hover:bg-gray-200 rounded-lg text-gray-700 font-semibold transition-colors duration-300 shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-white"
-                  >
+                  <button onClick={handleGoogleSignIn} aria-label="Sign in with Google" className="w-full flex items-center justify-center py-2.5 px-4 bg-white hover:bg-gray-200 rounded-lg text-gray-700 font-semibold transition-colors duration-300 shadow-md">
                     <GoogleIcon className="w-5 h-5 mr-3" />
                     Sign in with Google
                   </button>
                 </>
               ) : (
                 <AuthForm title="Create Account" onSubmit={handleRegisterSubmit} buttonText="Register">
-                  <InputField
-                    id="register-username"
-                    label="Username"
-                    type="text"
-                    value={registerUsername}
-                    onChange={(e) => setRegisterUsername(e.target.value)}
-                    placeholder="Choose a username"
-                    icon={<UserIcon className="w-5 h-5 text-gray-400" />}
-                  />
-                  <InputField
-                    id="register-email"
-                    label="Email"
-                    type="email"
-                    value={registerEmail}
-                    onChange={(e) => setRegisterEmail(e.target.value)}
-                    placeholder="Enter your email"
-                    icon={<EmailIcon className="w-5 h-5 text-gray-400" />}
-                  />
-                  <InputField
-                    id="register-password"
-                    label="Password"
-                    type="password"
-                    value={registerPassword}
-                    onChange={(e) => setRegisterPassword(e.target.value)}
-                    placeholder="Create a password"
-                    icon={<LockIcon className="w-5 h-5 text-gray-400" />}
-                  />
-                  <InputField
-                    id="register-confirm-password"
-                    label="Confirm Password"
-                    type="password"
-                    value={registerConfirmPassword}
-                    onChange={(e) => setRegisterConfirmPassword(e.target.value)}
-                    placeholder="Confirm your password"
-                    icon={<LockIcon className="w-5 h-5 text-gray-400" />}
-                  />
+                  <InputField id="register-username" label="Username" type="text" value={registerUsername} onChange={(e) => setRegisterUsername(e.target.value)} placeholder="Choose a username" icon={<UserIcon />} />
+                  <InputField id="register-email" label="Email" type="email" value={registerEmail} onChange={(e) => setRegisterEmail(e.target.value)} placeholder="Enter your email" icon={<EmailIcon />} />
+                  <InputField id="register-password" label="Password" type="password" value={registerPassword} onChange={(e) => setRegisterPassword(e.target.value)} placeholder="Create a password" icon={<LockIcon />} />
+                  <InputField id="register-confirm-password" label="Confirm Password" type="password" value={registerConfirmPassword} onChange={(e) => setRegisterConfirmPassword(e.target.value)} placeholder="Confirm your password" icon={<LockIcon />} />
                 </AuthForm>
               )}
-              {error && (
-                <p className="mt-4 text-center text-red-400 bg-red-900 bg-opacity-50 p-3 rounded-lg">{error}</p>
-              )}
+              {error && (<p className="mt-4 text-center text-red-400 bg-red-900 bg-opacity-50 p-3 rounded-lg">{error}</p>)}
             </div>
           </div>
   );
 
-
-  if (loading) {
-    return (
-      <div className="min-h-screen w-full bg-gradient-to-br from-gray-900 via-purple-900 to-blue-900 flex items-center justify-center">
-        <p className="text-white text-2xl">Loading...</p>
-      </div>
-    );
-  }
-  
   const renderContent = () => {
-    if (currentUser) {
-        return renderLoggedInView();
+    if (loading || (currentUser && !userData)) {
+      return (
+        <div className="text-white text-2xl">Loading...</div>
+      );
     }
-    if (needsVerification) {
-        return renderVerificationView();
+    
+    switch (viewMode) {
+        case 'lobby':
+            return <GameLobby userData={userData!} onPlay={() => setViewMode('game')} onManageProfile={() => setViewMode('profile')} onLogout={handleLogout} />;
+        case 'game':
+            return <BingoGame user={currentUser!} userData={userData!} onBackToLobby={() => setViewMode('lobby')} />;
+        case 'profile':
+            return <ProfileManagement user={currentUser!} onBack={() => setViewMode('lobby')} />;
+        case 'auth':
+            if (needsVerification) return renderVerificationView();
+            if (showVerificationMessage) return renderPostRegistrationView();
+            return renderAuthForms();
+        default:
+             return renderAuthForms();
     }
-    if (showVerificationMessage) {
-        return renderPostRegistrationView();
-    }
-    return renderAuthForms();
   }
 
   return (
     <div className="min-h-screen w-full bg-gradient-to-br from-gray-900 via-purple-900 to-blue-900 text-white flex flex-col items-center justify-center p-4">
-      
-        {!currentUser && !showVerificationMessage && !needsVerification && (
+        {viewMode === 'auth' && !showVerificationMessage && !needsVerification && (
             <div className="text-center mb-8">
                 <h1 className="text-5xl font-bold tracking-tight text-white sm:text-6xl">BINGO NIGHT</h1>
                 <p className="mt-4 text-lg text-gray-300">Your turn to win!</p>
             </div>
         )}
-        
         {renderContent()}
     </div>
   );

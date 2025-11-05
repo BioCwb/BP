@@ -1,11 +1,10 @@
+
 import React, { useState } from 'react';
-import {
-    type User,
-    updateProfile,
-    reauthenticateWithCredential,
-    updatePassword
-} from 'firebase/auth';
 import { auth, EmailAuthProvider } from '../firebase/config';
+// FIX: Removed v9 modular auth imports to switch to v8 compat syntax.
+import { 
+  type User
+} from 'firebase/auth';
 import { InputField } from './InputField';
 import { UserIcon } from './icons/UserIcon';
 import { LockIcon } from './icons/LockIcon';
@@ -39,7 +38,8 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, onBa
     if (!auth.currentUser) return;
 
     try {
-      await updateProfile(auth.currentUser, { displayName });
+      // FIX: Switched from v9 updateProfile(user, ...) to v8 user.updateProfile(...)
+      await auth.currentUser.updateProfile({ displayName });
       setSuccess('Profile updated successfully!');
     } catch (err) {
       setError('Failed to update profile. Please try again.');
@@ -66,8 +66,10 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, onBa
 
     try {
       const credential = EmailAuthProvider.credential(auth.currentUser.email, currentPassword);
-      await reauthenticateWithCredential(auth.currentUser, credential);
-      await updatePassword(auth.currentUser, newPassword);
+      // FIX: Switched from v9 reauthenticateWithCredential(user, ...) to v8 user.reauthenticateWithCredential(...)
+      await auth.currentUser.reauthenticateWithCredential(credential);
+      // FIX: Switched from v9 updatePassword(user, ...) to v8 user.updatePassword(...)
+      await auth.currentUser.updatePassword(newPassword);
 
       setPasswordSuccess('Password changed successfully!');
       setCurrentPassword('');
@@ -85,15 +87,16 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, onBa
       }
     }
   };
+  
+  const isEmailProvider = user.providerData.some(p => p.providerId === 'password');
 
   return (
     <div className="w-full max-w-md bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl p-8">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-3xl font-bold text-white">Manage Profile</h2>
-        <button onClick={onBack} className="text-gray-300 hover:text-white transition-colors">&larr; Back</button>
+        <button onClick={onBack} className="text-gray-300 hover:text-white transition-colors">&larr; Back to Lobby</button>
       </div>
 
-      {/* Update Profile Form */}
       <form onSubmit={handleProfileUpdate} className="space-y-4 border-b border-gray-700 pb-6 mb-6">
         <InputField
           id="display-name"
@@ -114,45 +117,50 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, onBa
         {success && <p className="text-center text-green-400">{success}</p>}
       </form>
       
-      {/* Change Password Form */}
-      <form onSubmit={handlePasswordChange} className="space-y-4">
-        <h3 className="text-xl font-semibold text-white text-center">Change Password</h3>
-         <InputField
-          id="current-password"
-          label="Current Password"
-          type="password"
-          value={currentPassword}
-          onChange={(e) => setCurrentPassword(e.target.value)}
-          placeholder="Enter your current password"
-          icon={<LockIcon className="w-5 h-5 text-gray-400" />}
-        />
-         <InputField
-          id="new-password"
-          label="New Password"
-          type="password"
-          value={newPassword}
-          onChange={(e) => setNewPassword(e.target.value)}
-          placeholder="Enter your new password"
-          icon={<LockIcon className="w-5 h-5 text-gray-400" />}
-        />
-         <InputField
-          id="confirm-new-password"
-          label="Confirm New Password"
-          type="password"
-          value={confirmNewPassword}
-          onChange={(e) => setConfirmNewPassword(e.target.value)}
-          placeholder="Confirm your new password"
-          icon={<LockIcon className="w-5 h-5 text-gray-400" />}
-        />
-        <button
-          type="submit"
-          className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-semibold transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50"
-        >
-          Update Password
-        </button>
-         {passwordError && <p className="text-center text-red-400">{passwordError}</p>}
-        {passwordSuccess && <p className="text-center text-green-400">{passwordSuccess}</p>}
-      </form>
+      {isEmailProvider ? (
+        <form onSubmit={handlePasswordChange} className="space-y-4">
+          <h3 className="text-xl font-semibold text-white text-center">Change Password</h3>
+           <InputField
+            id="current-password"
+            label="Current Password"
+            type="password"
+            value={currentPassword}
+            onChange={(e) => setCurrentPassword(e.target.value)}
+            placeholder="Enter your current password"
+            icon={<LockIcon className="w-5 h-5 text-gray-400" />}
+          />
+           <InputField
+            id="new-password"
+            label="New Password"
+            type="password"
+            value={newPassword}
+            onChange={(e) => setNewPassword(e.target.value)}
+            placeholder="Enter your new password"
+            icon={<LockIcon className="w-5 h-5 text-gray-400" />}
+          />
+           <InputField
+            id="confirm-new-password"
+            label="Confirm New Password"
+            type="password"
+            value={confirmNewPassword}
+            onChange={(e) => setConfirmNewPassword(e.target.value)}
+            placeholder="Confirm your new password"
+            icon={<LockIcon className="w-5 h-5 text-gray-400" />}
+          />
+          <button
+            type="submit"
+            className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-semibold transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50"
+          >
+            Update Password
+          </button>
+           {passwordError && <p className="text-center text-red-400">{passwordError}</p>}
+          {passwordSuccess && <p className="text-center text-green-400">{passwordSuccess}</p>}
+        </form>
+      ) : (
+        <div className="text-center text-gray-400">
+            Password management is not available for accounts signed in with Google.
+        </div>
+      )}
     </div>
   );
 };
