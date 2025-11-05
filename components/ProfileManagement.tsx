@@ -2,15 +2,13 @@
 import React, { useState } from 'react';
 import { auth, EmailAuthProvider } from '../firebase/config';
 // FIX: Removed v9 modular auth imports to switch to v8 compat syntax.
-import { 
-  type User
-} from 'firebase/auth';
+import type firebase from 'firebase/compat/app';
 import { InputField } from './InputField';
 import { UserIcon } from './icons/UserIcon';
 import { LockIcon } from './icons/LockIcon';
 
 interface ProfileManagementProps {
-  user: User;
+  user: firebase.User;
   onBack: () => void;
 }
 

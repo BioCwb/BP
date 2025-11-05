@@ -3,9 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { auth, googleProvider, db } from './firebase/config';
 // FIX: Removed firebase v9 modular imports as they are not compatible with the project setup, causing "no exported member" errors.
 // The functions are now called using the v8 syntax (e.g., auth.onAuthStateChanged).
-import { 
-  type User
-} from 'firebase/auth';
+import type firebase from 'firebase/compat/app';
 import { AuthForm } from './components/AuthForm';
 import { InputField } from './components/InputField';
 import { UserIcon } from './components/icons/UserIcon';
@@ -46,7 +44,7 @@ const TabButton: React.FC<TabButtonProps> = ({ mode, currentMode, onClick, child
 
 export default function App() {
   const [authMode, setAuthMode] = useState<AuthMode>('login');
-  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUser, setCurrentUser] = useState<firebase.User | null>(null);
   const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('auth');
@@ -65,7 +63,7 @@ export default function App() {
   
   // Verification State
   const [showVerificationMessage, setShowVerificationMessage] = useState(false);
-  const [needsVerification, setNeedsVerification] = useState<User | null>(null);
+  const [needsVerification, setNeedsVerification] = useState<firebase.User | null>(null);
   const [resendStatus, setResendStatus] = useState<'idle' | 'sent'>('idle');
 
   const handleTabChange = (mode: AuthMode) => {

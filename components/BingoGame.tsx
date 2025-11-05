@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { type User } from 'firebase/auth';
+import type firebase from 'firebase/compat/app';
 import { type UserData } from '../App';
 import { db, arrayUnion, increment } from '../firebase/config';
 // FIX: Removed unused v9 firestore imports to align with the v8 compatibility syntax.
@@ -49,7 +49,7 @@ interface GameState {
 }
 
 interface BingoGameProps {
-  user: User;
+  user: firebase.User;
   userData: UserData;
   onBackToLobby: () => void;
 }
