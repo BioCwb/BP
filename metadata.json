@@ -1,0 +1,5 @@
+{
+  "name": "Bingo Players Login",
+  "description": "A stylish login and registration screen for a Bingo game. Users can easily switch between signing in and creating a new account.",
+  "requestFramePermissions": []
+}
