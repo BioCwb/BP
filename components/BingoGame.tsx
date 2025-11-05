@@ -258,14 +258,38 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
 
             <main className="flex-grow flex gap-4 overflow-hidden">
                 <div className="w-1/4 bg-gray-800 rounded-lg p-4 flex flex-col">
-                    <h2 className="text-xl font-bold text-center mb-2">Called Numbers ({gameState.drawnNumbers.length}/75)</h2>
-                    <div className="grid grid-cols-5 gap-1 text-center flex-grow">
-                        {Array.from({length: 75}, (_, i) => i + 1).map(num => (
-                            <div key={num} className={`w-10 h-10 flex items-center justify-center rounded-full font-bold ${gameState.drawnNumbers.includes(num) ? 'bg-green-500 text-white' : 'bg-gray-700'}`}>
-                                {num}
-                            </div>
-                        ))}
+                    <div>
+                        <h2 className="text-xl font-bold text-center mb-2">Called Numbers ({gameState.drawnNumbers.length}/75)</h2>
+                        <div className="grid grid-cols-5 gap-1 text-center">
+                            {Array.from({length: 75}, (_, i) => i + 1).map(num => (
+                                <div key={num} className={`w-10 h-10 flex items-center justify-center rounded-full font-bold ${gameState.drawnNumbers.includes(num) ? 'bg-green-500 text-white' : 'bg-gray-700'}`}>
+                                    {num}
+                                </div>
+                            ))}
+                        </div>
                     </div>
+                    {(gameState.status === 'waiting' || gameState.status === 'running') && (
+                        <div className="flex-1 mt-4 flex flex-col overflow-hidden">
+                            <h2 className="text-xl font-bold text-center mb-2">Players ({Object.keys(gameState.players).length})</h2>
+                            <div className="overflow-y-auto pr-2">
+                                {Object.keys(gameState.players).length > 0 ? (
+                                    <ul className="space-y-2">
+                                        {/* FIX: Cast Object.entries result to provide strong types for player data, resolving 'does not exist on type unknown' errors. */}
+                                        {(Object.entries(gameState.players) as [string, { displayName: string, cardCount: number }][])
+                                        .sort(([, a], [, b]) => b.cardCount - a.cardCount)
+                                        .map(([uid, player]) => (
+                                            <li key={uid} className="flex justify-between items-center bg-gray-700 p-2 rounded-md">
+                                                <span className="font-semibold text-white truncate" title={player.displayName}>{player.displayName}</span>
+                                                <span className="text-sm text-gray-300 flex-shrink-0 ml-2">{player.cardCount} card(s)</span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                ) : (
+                                    <p className="text-gray-400 text-center italic mt-4">No players have bought cards yet.</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
                 </div>
                 <div className="w-3/4 flex flex-col">
                     <div className="bg-gray-800 rounded-lg p-4 mb-4 flex justify-between items-center">

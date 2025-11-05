@@ -25,6 +25,25 @@ export interface UserData {
   fichas: number;
 }
 
+// FIX: Moved TabButton component outside of the App component to prevent re-definition on each render
+// and to resolve a potential TypeScript type inference issue causing the 'children' prop error.
+interface TabButtonProps {
+  mode: AuthMode;
+  currentMode: AuthMode;
+  onClick: (mode: AuthMode) => void;
+  children: React.ReactNode;
+}
+
+const TabButton: React.FC<TabButtonProps> = ({ mode, currentMode, onClick, children }) => (
+  <button
+    onClick={() => onClick(mode)}
+    className={`w-1/2 py-3 text-center font-semibold transition-colors duration-300 focus:outline-none ${currentMode === mode ? 'text-white border-b-2 border-purple-500' : 'text-gray-400 hover:text-white'}`}
+  >
+    {children}
+  </button>
+);
+
+
 export default function App() {
   const [authMode, setAuthMode] = useState<AuthMode>('login');
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -48,6 +67,13 @@ export default function App() {
   const [showVerificationMessage, setShowVerificationMessage] = useState(false);
   const [needsVerification, setNeedsVerification] = useState<User | null>(null);
   const [resendStatus, setResendStatus] = useState<'idle' | 'sent'>('idle');
+
+  const handleTabChange = (mode: AuthMode) => {
+    setAuthMode(mode);
+    setError(null);
+    setShowVerificationMessage(false);
+    setNeedsVerification(null);
+  };
 
 
   useEffect(() => {
@@ -199,14 +225,6 @@ export default function App() {
     await auth.signOut();
   };
 
-  const TabButton = ({ mode, children }: { mode: AuthMode; children: React.ReactNode }) => (
-    <button
-      onClick={() => { setAuthMode(mode); setError(null); setShowVerificationMessage(false); setNeedsVerification(null); }}
-      className={`w-1/2 py-3 text-center font-semibold transition-colors duration-300 focus:outline-none ${authMode === mode ? 'text-white border-b-2 border-purple-500' : 'text-gray-400 hover:text-white'}`}
-    >
-      {children}
-    </button>
-  );
   
   const renderVerificationView = () => (
       <div className="w-full max-w-md bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl p-8 text-center">
@@ -237,8 +255,8 @@ export default function App() {
   const renderAuthForms = () => (
       <div className="w-full max-w-md bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl overflow-hidden">
             <div className="flex">
-              <TabButton mode="login">Login</TabButton>
-              <TabButton mode="register">Register</TabButton>
+              <TabButton mode="login" currentMode={authMode} onClick={handleTabChange}>Login</TabButton>
+              <TabButton mode="register" currentMode={authMode} onClick={handleTabChange}>Register</TabButton>
             </div>
             <div className="p-8">
               {authMode === 'login' ? (
