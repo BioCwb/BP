@@ -278,8 +278,11 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                                         {(Object.entries(gameState.players) as [string, { displayName: string, cardCount: number }][])
                                         .sort(([, a], [, b]) => b.cardCount - a.cardCount)
                                         .map(([uid, player]) => (
-                                            <li key={uid} className="flex justify-between items-center bg-gray-700 p-2 rounded-md">
-                                                <span className="font-semibold text-white truncate" title={player.displayName}>{player.displayName}</span>
+                                            <li key={uid} className={`flex justify-between items-center p-2 rounded-md transition-colors duration-300 ${uid === user.uid ? 'bg-purple-800' : 'bg-gray-700'}`}>
+                                                <span className="font-semibold text-white truncate" title={player.displayName}>
+                                                    {player.displayName}
+                                                    {uid === user.uid && <span className="text-yellow-400 font-normal"> (You)</span>}
+                                                </span>
                                                 <span className="text-sm text-gray-300 flex-shrink-0 ml-2">{player.cardCount} card(s)</span>
                                             </li>
                                         ))}
