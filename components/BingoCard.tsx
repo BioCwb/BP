@@ -1,43 +1,37 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
+import { calculateCardProgress } from '../utils/bingoUtils';
 
 interface BingoCardProps {
     numbers: number[][];
     drawnNumbers: number[];
-    onBingo: () => void;
+    onBingo: (winningCard: number[][]) => void;
     gameStatus: 'waiting' | 'running' | 'ended';
+    isWinningCard?: boolean;
 }
 
-export const BingoCard: React.FC<BingoCardProps> = ({ numbers, drawnNumbers, onBingo, gameStatus }) => {
-    const [isWinner, setIsWinner] = useState(false);
+export const BingoCard: React.FC<BingoCardProps> = ({ numbers, drawnNumbers, onBingo, gameStatus, isWinningCard = false }) => {
+    const [hasBingo, setHasBingo] = useState(false);
 
     const isMarked = (num: number) => {
         if (num === 0) return true; // Free space
         return drawnNumbers.includes(num);
     };
 
-    const checkForWin = useMemo(() => {
-        for (let i = 0; i < 5; i++) {
-            for (let j = 0; j < 5; j++) {
-                if (!isMarked(numbers[i][j])) {
-                    return false; // If any number isn't marked, it's not a full card
-                }
+    useEffect(() => {
+        if (gameStatus === 'running' && !hasBingo) {
+            const { isBingo } = calculateCardProgress(numbers, drawnNumbers);
+            if (isBingo) {
+                setHasBingo(true);
+                onBingo(numbers);
             }
         }
-        return true; // All numbers marked
-    }, [drawnNumbers, numbers]);
-
-    useEffect(() => {
-        if (gameStatus === 'running' && !isWinner && checkForWin) {
-            setIsWinner(true);
-            onBingo();
+        if (gameStatus === 'waiting' || gameStatus === 'ended') {
+            setHasBingo(false); // Reset for new game
         }
-        if (gameStatus === 'waiting') {
-            setIsWinner(false); // Reset for new game
-        }
-    }, [checkForWin, onBingo, isWinner, gameStatus]);
+    }, [drawnNumbers, onBingo, hasBingo, gameStatus, numbers]);
     
     return (
-        <div className={`grid grid-cols-5 gap-1 p-2 rounded-lg shadow-lg aspect-square ${isWinner ? 'bg-green-500 animate-pulse' : 'bg-blue-900 bg-opacity-50'}`}>
+        <div className={`grid grid-cols-5 gap-1 p-2 rounded-lg shadow-lg aspect-square ${hasBingo || isWinningCard ? 'bg-green-500 animate-pulse' : 'bg-blue-900 bg-opacity-50'}`}>
             {numbers.flat().map((num, index) => {
                 const isCenter = index === 12;
                 const marked = isMarked(num);

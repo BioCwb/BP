@@ -1,10 +1,12 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { type User } from 'firebase/auth';
 import { type UserData } from '../App';
 import { db, arrayUnion, increment } from '../firebase/config';
 // FIX: Removed unused v9 firestore imports to align with the v8 compatibility syntax.
 import { BingoCard } from './BingoCard';
+import { calculateCardProgress } from '../utils/bingoUtils';
+
 
 // Helper function to generate a valid Bingo card
 const generateBingoCard = (): number[][] => {
@@ -38,9 +40,9 @@ const generateBingoCard = (): number[][] => {
 interface GameState {
     status: 'waiting' | 'running' | 'ended';
     drawnNumbers: number[];
-    players: { [uid: string]: { displayName: string; cardCount: number; } };
+    players: { [uid: string]: { displayName: string; cardCount: number; progress?: number; } };
     prizePool: number;
-    winners: { uid: string, displayName: string }[];
+    winners: { uid: string, displayName: string, card: number[][] }[];
     host: string | null;
     countdown: number;
     lastWinnerAnnouncement: string;
@@ -51,6 +53,16 @@ interface BingoGameProps {
   userData: UserData;
   onBackToLobby: () => void;
 }
+
+const getBingoLetter = (num: number) => {
+    if (num <= 15) return 'B';
+    if (num <= 30) return 'I';
+    if (num <= 45) return 'N';
+    if (num <= 60) return 'G';
+    if (num <= 75) return 'O';
+    return '';
+};
+
 
 export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLobby }) => {
     const [gameState, setGameState] = useState<GameState | null>(null);
@@ -117,12 +129,17 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
 
                 const newCard = generateBingoCard();
                 
-                transaction.update(userDocRef, { fichas: currentFichas - 10 });
+                transaction.update(userDocRef, { fichas: increment(-10) });
+
+                const gameData = gameDoc.data() as GameState;
+                const player = gameData.players[user.uid];
+
                 transaction.update(gameDocRef, {
-                    prizePool: gameDoc.data()!.prizePool + 9, // 90% to prize pool
+                    prizePool: increment(9),
                     [`players.${user.uid}`]: {
                         displayName: user.displayName || 'Player',
-                        cardCount: myCards.length + 1
+                        cardCount: (player?.cardCount || 0) + 1,
+                        progress: player?.progress ?? 5, // Default progress for a new card is 5 numbers to a line
                     }
                 });
 
@@ -204,19 +221,19 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
 
     }, [gameState, user.uid, gameDocRef]);
     
-    const onBingo = useCallback(async () => {
+    const onBingo = useCallback(async (winningCard: number[][]) => {
         if (!gameState || gameState.status !== 'running' || gameState.winners.some(w => w.uid === user.uid)) return;
         
         const prizePerWinner = Math.floor(gameState.prizePool / (gameState.winners.length + 1));
+        const newWinner = { uid: user.uid, displayName: user.displayName || 'Player', card: winningCard };
+        const allWinners = [...gameState.winners, newWinner];
 
         // FIX: Switched from v9 writeBatch(db) to v8 db.batch()
         const batch = db.batch();
         batch.update(gameDocRef, { 
             status: 'ended', 
-            winners: [...gameState.winners, {uid: user.uid, displayName: user.displayName || 'Player'}]
+            winners: allWinners
         });
-
-        const allWinners = [...gameState.winners, {uid: user.uid, displayName: user.displayName || 'Player'}];
         
         for(const winner of allWinners) {
             const userDocRef = db.collection("users").doc(winner.uid);
@@ -227,28 +244,84 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
 
     }, [gameState, user, gameDocRef]);
     
+     // Player Progress Update Effect
+    useEffect(() => {
+        if (!myCards.length || !gameState || gameState.status !== 'running') return;
+        
+        let bestProgress = 5; // Default best is 5 numbers for a line
+        for (const card of myCards) {
+            const progress = calculateCardProgress(card, gameState.drawnNumbers);
+            if (progress.numbersToWin < bestProgress) {
+                bestProgress = progress.numbersToWin;
+            }
+        }
+
+        const currentProgress = gameState.players[user.uid]?.progress;
+        if (bestProgress !== currentProgress) {
+            gameDocRef.update({
+                [`players.${user.uid}.progress`]: bestProgress
+            }).catch(err => console.error("Failed to update progress", err));
+        }
+
+    }, [myCards, gameState?.drawnNumbers, gameState?.status, user.uid, gameDocRef]);
+
+
     if (!gameState) return <div className="text-center text-xl">Loading Bingo Game...</div>;
 
     const lastDrawnNumber = gameState.drawnNumbers[gameState.drawnNumbers.length - 1] || null;
+
+    const sortedPlayers = useMemo(() => {
+        if (!gameState.players) return [];
+        return (Object.entries(gameState.players) as [string, { displayName: string, cardCount: number, progress?: number }][])
+            .sort(([, a], [, b]) => {
+                const progressA = a.progress ?? 99;
+                const progressB = b.progress ?? 99;
+                if (progressA !== progressB) {
+                    return progressA - progressB;
+                }
+                return b.cardCount - a.cardCount;
+            });
+    }, [gameState.players]);
 
     return (
         <div className="w-full max-w-7xl mx-auto p-4 flex flex-col h-screen">
             <header className="flex justify-between items-center bg-gray-900 bg-opacity-70 p-4 rounded-lg mb-4">
                 <div>
                     <h1 className="text-3xl font-bold text-purple-400">BINGO NIGHT</h1>
-                    <p className="text-yellow-400">Prize Pool: <span className="font-bold">{gameState.prizePool} F</span></p>
+                     <p className="text-gray-300">Welcome, {userData.displayName}</p>
+                     <p className="text-yellow-400">Balance: <span className="font-bold">{userData.fichas} F</span></p>
+                     <p className="text-yellow-400">Prize Pool: <span className="font-bold">{gameState.prizePool} F</span></p>
                 </div>
                 <div className="text-center">
-                    {gameState.status === 'running' && lastDrawnNumber && <p className="text-lg">Last Ball: <span className="font-bold text-4xl text-green-400">{lastDrawnNumber}</span></p>}
-                    <p className="text-sm">Next ball in: <span className="font-bold text-xl">{gameState.countdown}s</span></p>
+                    {gameState.status === 'running' && lastDrawnNumber && (
+                        <div key={lastDrawnNumber} className="animate-pulse">
+                            <p className="text-lg">Last Ball:</p> 
+                            <span className="font-bold text-6xl text-green-400 drop-shadow-lg">{getBingoLetter(lastDrawnNumber)}-{lastDrawnNumber}</span>
+                        </div>
+                    )}
+                    <p className="text-sm mt-2">Next ball in: <span className="font-bold text-xl">{gameState.countdown}s</span></p>
                 </div>
-                <button onClick={onBackToLobby} className="py-2 px-4 bg-red-600 hover:bg-red-700 rounded-lg font-semibold">&larr; Back to Lobby</button>
+                <button onClick={onBackToLobby} className="py-2 px-4 bg-red-600 hover:bg-red-700 rounded-lg font-semibold self-start">&larr; Back to Lobby</button>
             </header>
 
             {gameState.status === 'ended' && (
-                <div className="text-center bg-green-500 text-white p-4 rounded-lg my-4 text-2xl font-bold">
-                    BINGO! Winner(s): {gameState.winners.map(w => w.displayName).join(', ')}. Each wins {gameState.winners.length > 0 ? Math.floor(gameState.prizePool / gameState.winners.length) : 0} F! New game starting soon...
-                </div>
+                 <div className="text-center bg-green-800 bg-opacity-80 backdrop-blur-sm text-white p-4 rounded-lg my-4">
+                    <h2 className="text-3xl font-bold">BINGO!</h2>
+                    <p className="text-xl">Winner(s): {gameState.winners.map(w => w.displayName).join(', ')}</p>
+                    <p>Each wins {gameState.winners.length > 0 ? Math.floor(gameState.prizePool / gameState.winners.length) : 0} F!</p>
+                     <p className="mt-4 text-sm">New game starting soon...</p>
+                     <div className="mt-4">
+                         <h3 className="text-lg font-semibold">Winning Card(s):</h3>
+                         <div className="flex justify-center gap-4 mt-2 overflow-x-auto p-2">
+                             {gameState.winners.map((winner, index) => (
+                                 <div key={index} className="flex-shrink-0 w-64">
+                                     <BingoCard numbers={winner.card} drawnNumbers={gameState.drawnNumbers} gameStatus="ended" onBingo={()=>{}} isWinningCard={true} />
+                                     <p className="text-center font-semibold mt-1">{winner.displayName}'s Card</p>
+                                 </div>
+                             ))}
+                         </div>
+                     </div>
+                 </div>
             )}
             {gameState.status === 'waiting' && gameState.lastWinnerAnnouncement && (
                  <div className="text-center bg-blue-500 text-white p-2 rounded-lg my-2 text-md font-bold">
@@ -262,28 +335,32 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                         <h2 className="text-xl font-bold text-center mb-2">Called Numbers ({gameState.drawnNumbers.length}/75)</h2>
                         <div className="grid grid-cols-5 gap-1 text-center">
                             {Array.from({length: 75}, (_, i) => i + 1).map(num => (
-                                <div key={num} className={`w-10 h-10 flex items-center justify-center rounded-full font-bold ${gameState.drawnNumbers.includes(num) ? 'bg-green-500 text-white' : 'bg-gray-700'}`}>
+                                <div key={num} className={`w-10 h-10 flex items-center justify-center rounded-full font-bold text-sm transition-colors duration-200 ${gameState.drawnNumbers.includes(num) ? 'bg-green-500 text-white' : 'bg-gray-700'}`}>
                                     {num}
                                 </div>
                             ))}
                         </div>
                     </div>
-                    {(gameState.status === 'waiting' || gameState.status === 'running') && (
+                     {(gameState.status === 'waiting' || gameState.status === 'running') && (
                         <div className="flex-1 mt-4 flex flex-col overflow-hidden">
-                            <h2 className="text-xl font-bold text-center mb-2">Players ({Object.keys(gameState.players).length})</h2>
+                            <h2 className="text-xl font-bold text-center mb-2">Player Ranking ({Object.keys(gameState.players).length})</h2>
                             <div className="overflow-y-auto pr-2">
-                                {Object.keys(gameState.players).length > 0 ? (
+                                {sortedPlayers.length > 0 ? (
                                     <ul className="space-y-2">
-                                        {/* FIX: Cast Object.entries result to provide strong types for player data, resolving 'does not exist on type unknown' errors. */}
-                                        {(Object.entries(gameState.players) as [string, { displayName: string, cardCount: number }][])
-                                        .sort(([, a], [, b]) => b.cardCount - a.cardCount)
-                                        .map(([uid, player]) => (
+                                        {sortedPlayers.map(([uid, player]) => (
                                             <li key={uid} className={`flex justify-between items-center p-2 rounded-md transition-colors duration-300 ${uid === user.uid ? 'bg-purple-800' : 'bg-gray-700'}`}>
-                                                <span className="font-semibold text-white truncate" title={player.displayName}>
-                                                    {player.displayName}
-                                                    {uid === user.uid && <span className="text-yellow-400 font-normal"> (You)</span>}
-                                                </span>
-                                                <span className="text-sm text-gray-300 flex-shrink-0 ml-2">{player.cardCount} card(s)</span>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-semibold text-white truncate" title={player.displayName}>
+                                                        {player.displayName}
+                                                        {uid === user.uid && <span className="text-yellow-400 font-normal"> (You)</span>}
+                                                    </p>
+                                                    <p className="text-xs text-gray-400">{player.cardCount} card(s)</p>
+                                                </div>
+                                                {player.progress !== undefined && player.progress > 0 && gameState.status === 'running' && (
+                                                    <span className="text-sm bg-blue-500 text-white font-bold py-1 px-2 rounded-full flex-shrink-0 ml-2">
+                                                        Needs {player.progress}
+                                                    </span>
+                                                )}
                                             </li>
                                         ))}
                                     </ul>
