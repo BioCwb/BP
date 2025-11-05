@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type firebase from 'firebase/compat/app';
 import { type UserData } from '../App';
@@ -69,20 +70,15 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
     const [myCards, setMyCards] = useState<number[][][]>([]);
     const [error, setError] = useState<string | null>(null);
 
-    // FIX: Switched from v9 doc(db, ...) to v8 db.collection(...).doc(...)
-    const gameDocRef = db.collection('games').doc('active_game');
-    // FIX: Switched from v9 doc(collection(db,...)) to v8 db.collection(...).doc(...).collection(...)
-    const myCardsCollectionRef = db.collection('player_cards').doc(user.uid).collection('cards').doc('active_game');
+    const gameDocRef = useMemo(() => db.collection('games').doc('active_game'), []);
+    const myCardsCollectionRef = useMemo(() => db.collection('player_cards').doc(user.uid).collection('cards').doc('active_game'), [user.uid]);
 
     useEffect(() => {
-        // FIX: Switched from v9 onSnapshot(docRef, ...) to v8 docRef.onSnapshot(...)
         const unsubGame = gameDocRef.onSnapshot((doc) => {
-            // FIX: Switched from v9 doc.exists() to v8 doc.exists
             if (doc.exists) {
                 setGameState(doc.data() as GameState);
             } else {
-                if(user) {
-                     // FIX: Switched from v9 runTransaction(db, ...) to v8 db.runTransaction(...)
+                if (user) {
                      db.runTransaction(async (transaction) => {
                         const gameDoc = await transaction.get(gameDocRef);
                         if (!gameDoc.exists) {
@@ -94,20 +90,24 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                     });
                 }
             }
+        }, (err) => {
+            console.error("Error fetching game state:", err);
+            setError("Failed to connect to the game. Please check your connection and disable ad blockers.");
         });
 
-        // FIX: Switched from v9 onSnapshot(docRef, ...) to v8 docRef.onSnapshot(...)
         const unsubCards = myCardsCollectionRef.onSnapshot((doc) => {
-            // FIX: Switched from v9 doc.exists() to v8 doc.exists
             if (doc.exists) {
                 setMyCards(doc.data()!.cards || []);
             } else {
                 setMyCards([]);
             }
+        }, (err) => {
+            console.error("Error fetching player cards:", err);
+            setError("Failed to load your cards. Please check your connection and disable ad blockers.");
         });
 
         return () => { unsubGame(); unsubCards(); };
-    }, [user.uid, gameDocRef, myCardsCollectionRef]);
+    }, [user, gameDocRef, myCardsCollectionRef]);
     
     const handleBuyCard = async () => {
         setError(null);
@@ -115,13 +115,11 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
         if (userData.fichas < 10) { return setError("Not enough Fichas (F) to buy a card."); }
 
         try {
-            // FIX: Switched from v9 runTransaction(db, ...) to v8 db.runTransaction(...)
             await db.runTransaction(async (transaction) => {
                 const userDocRef = db.collection("users").doc(user.uid);
                 const userDoc = await transaction.get(userDocRef);
                 const gameDoc = await transaction.get(gameDocRef);
 
-                // FIX: Switched from v9 doc.exists() to v8 doc.exists
                 if (!userDoc.exists || !gameDoc.exists) throw new Error("Documents not found");
                 
                 const currentFichas = userDoc.data()!.fichas;
@@ -139,7 +137,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                     [`players.${user.uid}`]: {
                         displayName: user.displayName || 'Player',
                         cardCount: (player?.cardCount || 0) + 1,
-                        progress: player?.progress ?? 5, // Default progress for a new card is 5 numbers to a line
+                        progress: player?.progress ?? 5,
                     }
                 });
 
@@ -163,7 +161,6 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
 
         if (gameState.status === 'waiting' && Object.keys(gameState.players).length > 0) {
             intervalId = window.setInterval(async () => {
-                // FIX: Switched from v9 runTransaction(db, ...) to v8 db.runTransaction(...)
                 await db.runTransaction(async (t) => {
                     const gameDoc = await t.get(gameDocRef);
                     if (!gameDoc.exists) return;
@@ -177,7 +174,6 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
             }, 1000);
         } else if (gameState.status === 'running') {
             intervalId = window.setInterval(async () => {
-                 // FIX: Switched from v9 runTransaction(db, ...) to v8 db.runTransaction(...)
                  await db.runTransaction(async (t) => {
                     const gameDoc = await t.get(gameDocRef);
                     if (!gameDoc.exists) return;
@@ -203,7 +199,6 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
             }, 1000);
         } else if (gameState.status === 'ended') {
              setTimeout(async () => {
-                // FIX: Switched from v9 writeBatch(db) to v8 db.batch()
                 const batch = db.batch();
                 batch.update(gameDocRef, { status: 'waiting', drawnNumbers: [], prizePool: 0, winners: [], countdown: 15, lastWinnerAnnouncement: `Last winner(s): ${gameState.winners.map(w => w.displayName).join(', ')}`});
                 
@@ -228,7 +223,6 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
         const newWinner = { uid: user.uid, displayName: user.displayName || 'Player', card: winningCard };
         const allWinners = [...gameState.winners, newWinner];
 
-        // FIX: Switched from v9 writeBatch(db) to v8 db.batch()
         const batch = db.batch();
         batch.update(gameDocRef, { 
             status: 'ended', 
@@ -263,7 +257,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
             }).catch(err => console.error("Failed to update progress", err));
         }
 
-    }, [myCards, gameState?.drawnNumbers, gameState?.status, user.uid, gameDocRef]);
+    }, [myCards, gameState, user.uid, gameDocRef]);
 
 
     if (!gameState) return <div className="text-center text-xl">Loading Bingo Game...</div>;
@@ -346,9 +340,9 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                                                         {player.displayName}
                                                         {uid === user.uid && <span className="text-yellow-400 font-normal"> (You)</span>}
                                                     </p>
-                                                    <p className="text-xs text-gray-400">{player.cardCount} card(s)</p>
+                                                    <p className="text-xs text-gray-400">{typeof player.cardCount === 'number' ? player.cardCount : '?'} card(s)</p>
                                                 </div>
-                                                {player.progress !== undefined && player.progress > 0 && gameState.status === 'running' && (
+                                                {player.progress !== undefined && typeof player.progress === 'number' && player.progress > 0 && gameState.status === 'running' && (
                                                     <span className="text-sm bg-blue-500 text-white font-bold py-1 px-2 rounded-full flex-shrink-0 ml-2">
                                                         Needs {player.progress}
                                                     </span>

@@ -107,6 +107,11 @@ export default function App() {
     return () => unsubscribeAuth();
   }, []);
   
+  const handleLogout = async () => {
+    // FIX: Switched from v9 signOut(auth) to v8 auth.signOut()
+    await auth.signOut();
+  };
+  
   useEffect(() => {
     if (currentUser?.uid) {
       // FIX: Switched from v9 doc(db, ...) to v8 db.collection(...).doc(...)
@@ -117,6 +122,10 @@ export default function App() {
         if (doc.exists) {
           setUserData(doc.data() as UserData);
         }
+      }, (err) => {
+          console.error("Error fetching user data:", err);
+          setError("Failed to load your profile. Please check your connection and disable ad blockers. You have been logged out.");
+          handleLogout(); // Log out on critical data fetch failure
       });
       return () => unsubscribe();
     }
@@ -216,11 +225,6 @@ export default function App() {
     } catch (error) {
         setError("Failed to resend verification email.");
     }
-  };
-
-  const handleLogout = async () => {
-    // FIX: Switched from v9 signOut(auth) to v8 auth.signOut()
-    await auth.signOut();
   };
 
   
