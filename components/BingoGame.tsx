@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type firebase from 'firebase/compat/app';
 import { type UserData } from '../App';
@@ -6,6 +5,7 @@ import { db, arrayUnion, increment } from '../firebase/config';
 // FIX: Removed unused v9 firestore imports to align with the v8 compatibility syntax.
 import { BingoCard } from './BingoCard';
 import { calculateCardProgress } from '../utils/bingoUtils';
+import { BingoMasterBoard } from './BingoMasterBoard';
 
 
 // Helper function to generate a valid Bingo card
@@ -289,8 +289,8 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                 <div>
                     <h1 className="text-3xl font-bold text-purple-400">BINGO NIGHT</h1>
                      <p className="text-gray-300">Welcome, {userData.displayName}</p>
-                     <p className="text-yellow-400">Balance: <span className="font-bold">{userData.fichas} F</span></p>
-                     <p className="text-yellow-400">Prize Pool: <span className="font-bold">{gameState.prizePool} F</span></p>
+                     <p className="text-yellow-400">Balance: <span className="font-bold">{typeof userData.fichas === 'number' ? userData.fichas : '...'} F</span></p>
+                     <p className="text-yellow-400">Prize Pool: <span className="font-bold">{typeof gameState.prizePool === 'number' ? gameState.prizePool : '0'} F</span></p>
                 </div>
                 <div className="text-center">
                     {gameState.status === 'running' && lastDrawnNumber && (
@@ -330,21 +330,13 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
             )}
 
             <main className="flex-grow flex gap-4 overflow-hidden">
-                <div className="w-1/4 bg-gray-800 rounded-lg p-4 flex flex-col">
-                    <div>
-                        <h2 className="text-xl font-bold text-center mb-2">Called Numbers ({gameState.drawnNumbers.length}/75)</h2>
-                        <div className="grid grid-cols-5 gap-1 text-center">
-                            {Array.from({length: 75}, (_, i) => i + 1).map(num => (
-                                <div key={num} className={`w-10 h-10 flex items-center justify-center rounded-full font-bold text-sm transition-colors duration-200 ${gameState.drawnNumbers.includes(num) ? 'bg-green-500 text-white' : 'bg-gray-700'}`}>
-                                    {num}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
+                <div className="w-1/4 bg-gray-800 rounded-lg p-4 flex flex-col overflow-y-auto">
+                    <BingoMasterBoard drawnNumbers={gameState.drawnNumbers} />
+                    
                      {(gameState.status === 'waiting' || gameState.status === 'running') && (
-                        <div className="flex-1 mt-4 flex flex-col overflow-hidden">
+                        <div className="mt-4">
                             <h2 className="text-xl font-bold text-center mb-2">Player Ranking ({Object.keys(gameState.players).length})</h2>
-                            <div className="overflow-y-auto pr-2">
+                            <div className="pr-2">
                                 {sortedPlayers.length > 0 ? (
                                     <ul className="space-y-2">
                                         {sortedPlayers.map(([uid, player]) => (

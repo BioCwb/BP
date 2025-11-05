@@ -18,7 +18,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ userData, onPlay, onManage
     <div className="bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl p-8 text-center w-full max-w-md">
         <div className="mb-6">
             <h2 className="text-3xl font-bold text-white">Welcome, {userData.displayName}!</h2>
-            <p className="text-2xl font-bold text-yellow-400 mt-2">Balance: {userData.fichas} F</p>
+            <p className="text-2xl font-bold text-yellow-400 mt-2">Balance: {typeof userData.fichas === 'number' ? userData.fichas : '...'} F</p>
         </div>
         
         <div className="space-y-4">
