@@ -5,6 +5,23 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Bingo Players Login</title>
+    <style>
+      @keyframes bingo-glow {
+        0%, 100% { box-shadow: 0 0 5px #34D399, 0 0 10px #34D399, 0 0 15px #34D399; }
+        50% { box-shadow: 0 0 20px #6EE7B7, 0 0 30px #6EE7B7, 0 0 40px #6EE7B7; }
+      }
+      .bingo-animation {
+        animation: bingo-glow 2s ease-in-out infinite;
+      }
+      
+      @keyframes mark-number-pulse {
+        0%, 100% { transform: scale(1.05); }
+        50% { transform: scale(1.2); }
+      }
+      .marked-animation {
+        animation: mark-number-pulse 1.5s ease-in-out infinite;
+      }
+    </style>
     <script src="https://cdn.tailwindcss.com"></script>
   <script type="importmap">
 {
