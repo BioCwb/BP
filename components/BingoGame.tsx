@@ -8,35 +8,6 @@ import { calculateCardProgress } from '../utils/bingoUtils';
 import { BingoMasterBoard } from './BingoMasterBoard';
 
 
-// Helper function to generate a valid Bingo card as a flat array
-const generateBingoCard = (): number[] => {
-    const card: number[][] = Array(5).fill(null).map(() => Array(5).fill(0));
-    const ranges = [
-        { col: 0, min: 1, max: 15 },
-        { col: 1, min: 16, max: 30 },
-        { col: 2, min: 31, max: 45 },
-        { col: 3, min: 46, max: 60 },
-        { col: 4, min: 61, max: 75 },
-    ];
-    
-    for (const range of ranges) {
-        const columnNumbers = new Set<number>();
-        while (columnNumbers.size < 5) {
-            const num = Math.floor(Math.random() * (range.max - range.min + 1)) + range.min;
-            columnNumbers.add(num);
-        }
-        const nums = Array.from(columnNumbers);
-        for (let row = 0; row < 5; row++) {
-            if (range.col === 2 && row === 2) { // Free space
-                card[row][range.col] = 0;
-            } else {
-                card[row][range.col] = nums[row];
-            }
-        }
-    }
-    return card.flat();
-};
-
 export interface GameState {
     status: 'waiting' | 'running' | 'ended' | 'paused';
     drawnNumbers: number[];
@@ -137,59 +108,17 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
             const duration = gameState.endGameDelayDuration || 10;
             setEndGameCountdown(duration); // Reset on game end
             const timer = setInterval(() => {
-                setEndGameCountdown(prev => (prev > 0 ? prev - 1 : 0));
+                setEndGameCountdown(prev => {
+                    if (prev <= 1) {
+                        onBackToLobby();
+                        return 0;
+                    }
+                    return prev - 1;
+                });
             }, 1000);
             return () => clearInterval(timer);
         }
-    }, [gameState?.status, gameState?.endGameDelayDuration]);
-    
-    const handleBuyCard = async () => {
-        setError(null);
-        if (myCards.length >= 50) { return setError('Você não pode ter mais de 50 cartelas.'); }
-        if (userData.fichas < 10) { return setError('Fichas (F) insuficientes para comprar uma cartela.'); }
-
-        try {
-            await db.runTransaction(async (transaction) => {
-                // --- Step 1: All reads must be first ---
-                const userDocRef = db.collection("users").doc(user.uid);
-                const userDoc = await transaction.get(userDocRef);
-                const gameDoc = await transaction.get(gameDocRef);
-                const playerCardsDoc = await transaction.get(myCardsCollectionRef);
-
-                // --- Step 2: Validation ---
-                if (!userDoc.exists || !gameDoc.exists) throw new Error('Dados do usuário ou do jogo não encontrados. Por favor, tente novamente.');
-                
-                const currentFichas = userDoc.data()!.fichas;
-                if (currentFichas < 10) throw new Error('Fichas (F) insuficientes para comprar uma cartela.');
-
-                // --- Step 3: Logic ---
-                const newCardData: BingoCardData = { numbers: generateBingoCard() };
-                const gameData = gameDoc.data() as GameState;
-                const player = gameData.players?.[user.uid];
-
-                // --- Step 4: All writes must be last ---
-                transaction.update(userDocRef, { fichas: increment(-10) });
-
-                transaction.update(gameDocRef, {
-                    prizePool: increment(9),
-                    [`players.${user.uid}`]: {
-                        displayName: user.displayName || 'Player',
-                        cardCount: (player?.cardCount || 0) + 1,
-                        progress: player?.progress ?? 5,
-                    }
-                });
-                
-                if (playerCardsDoc.exists) {
-                    transaction.update(myCardsCollectionRef, { cards: arrayUnion(newCardData) });
-                } else {
-                    transaction.set(myCardsCollectionRef, { cards: [newCardData] });
-                }
-            });
-        } catch (e: any) {
-            console.error("Buy card transaction failed:", e);
-            setError(e.message);
-        }
-    };
+    }, [gameState?.status, gameState?.endGameDelayDuration, onBackToLobby]);
     
     // Game loop logic - only runs for the host
     useEffect(() => {
@@ -198,20 +127,9 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
         let intervalId: number | undefined;
         let timeoutId: number | undefined;
 
-        if (gameState.status === 'waiting' && Object.keys(gameState.players).length > 0) {
-            intervalId = window.setInterval(async () => {
-                await db.runTransaction(async (t) => {
-                    const gameDoc = await t.get(gameDocRef);
-                    if (!gameDoc.exists) return;
-                    const data = gameDoc.data() as GameState;
-                    const currentCountdown = data.countdown;
-                    if (currentCountdown <= 1) {
-                         t.update(gameDocRef, { status: 'running', countdown: data.drawIntervalDuration || 5 });
-                    } else {
-                         t.update(gameDocRef, { countdown: currentCountdown - 1 });
-                    }
-                });
-            }, 1000);
+        if (gameState.status === 'waiting') {
+            // Automatic start is disabled; admin must start it.
+            // Clear any lingering timers.
         } else if (gameState.status === 'running') {
             intervalId = window.setInterval(async () => {
                  await db.runTransaction(async (t) => {
@@ -367,8 +285,9 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                             <span className="font-bold text-6xl text-green-400 drop-shadow-lg">{getBingoLetter(lastDrawnNumber)}-{lastDrawnNumber}</span>
                         </div>
                     )}
-                     {gameState.status !== 'ended' && gameState.status !== 'paused' && (
-                        <p className="text-sm mt-2">{gameState.status === 'running' ? 'Próxima bola em' : 'O jogo começa em'}: <span className="font-bold text-xl">{gameState.countdown}s</span></p>
+                     {gameState.status === 'waiting' && <p className="text-xl font-bold">Aguardando início...</p>}
+                     {gameState.status === 'running' && (
+                        <p className="text-sm mt-2">Próxima bola em: <span className="font-bold text-xl">{gameState.countdown}s</span></p>
                      )}
                 </div>
                 <button onClick={onBackToLobby} className="py-2 px-4 bg-red-600 hover:bg-red-700 rounded-lg font-semibold self-start">&larr; Voltar para o Lobby</button>
@@ -413,7 +332,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                         )}
 
                         <p className="mt-4 text-lg">
-                            Novo jogo começando em <span className="font-bold text-2xl text-green-400">{endGameCountdown}s</span>...
+                            Voltando para o lobby em <span className="font-bold text-2xl text-green-400">{endGameCountdown}s</span>...
                         </p>
                     </div>
                 </div>
@@ -463,7 +382,6 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                 <div className="w-3/4 flex flex-col">
                     <div className="bg-gray-800 rounded-lg p-4 mb-4 flex justify-between items-center">
                         <h2 className="text-xl font-bold">Suas Cartelas ({myCards.length})</h2>
-                        <button onClick={handleBuyCard} disabled={gameState.status !== 'waiting'} className="py-2 px-6 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed">Comprar Cartela (10 F)</button>
                     </div>
                     {error && <p className="text-red-400 text-center mb-2">{error}</p>}
                     <div className="flex-grow overflow-y-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-2">

@@ -50,13 +50,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
     };
 
     const handleForceStart = async () => {
-        if (gameState?.status === 'waiting') {
+        if (gameState?.status === 'waiting' && gameState.players && Object.keys(gameState.players).length > 0) {
             try {
                 await gameDocRef.update({ status: 'running', countdown: gameState.drawIntervalDuration || 5 });
                 showMessage('success', 'Jogo iniciado forçadamente!');
             } catch (error) {
                 showMessage('error', 'Falha ao iniciar o jogo.');
             }
+        } else {
+            showMessage('error', 'O jogo não pode ser iniciado sem jogadores com cartelas.');
         }
     };
     
@@ -115,6 +117,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
             }
         }
     };
+    
+    const canForceStart = gameState?.status === 'waiting' && gameState.players && Object.keys(gameState.players).length > 0;
 
     return (
         <div className="w-full max-w-2xl bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl p-8 text-white">
@@ -145,7 +149,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
             <div className="bg-gray-900 p-4 rounded-lg mb-6">
                  <h3 className="text-xl font-semibold mb-4 text-center">Controles do Jogo</h3>
                  <div className="flex gap-4 justify-center">
-                     <button onClick={handleForceStart} disabled={gameState?.status !== 'waiting'} className="flex-1 py-2 px-4 bg-green-600 hover:bg-green-700 rounded-lg font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed">Forçar Início</button>
+                     <button onClick={handleForceStart} disabled={!canForceStart} className="flex-1 py-2 px-4 bg-green-600 hover:bg-green-700 rounded-lg font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed">Forçar Início</button>
                      
                       {(gameState?.status === 'running' || gameState?.status === 'paused') && (
                         <button 
