@@ -1,20 +1,102 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Noite do Bingo
 
-# Run and deploy your AI Studio app
+Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real construído com React, TypeScript e Firebase. Este projeto oferece uma experiência de jogo completa com autenticação de usuários, um lobby interativo, jogabilidade em tempo real e um painel de administração robusto para gerenciamento total da partida.
 
-This contains everything you need to run your app locally.
+## ✨ Funcionalidades
 
-View your app in AI Studio: https://ai.studio/apps/drive/1BYW5GJG8ThqX7eMblN9Mz-O36zfFAe_c
+### Para Jogadores
+- **Autenticação Segura:** Sistema de login e registro com e-mail/senha e login social com Google. Inclui verificação de e-mail.
+- **Lobby do Jogo:** Uma área central onde os jogadores podem ver seu saldo, comprar cartelas e entrar na próxima partida.
+- **Compra de Cartelas:** Os jogadores podem comprar até 50 cartelas por rodada usando fichas virtuais (F).
+- **Jogabilidade em Tempo Real:** Sorteio de números e marcação automática das cartelas, tudo sincronizado em tempo real para todos os jogadores usando Firestore.
+- **Ranking Dinâmico:** Um placar na tela do jogo mostra o progresso dos jogadores, indicando quantos números faltam para cada um ganhar.
+- **Gerenciamento de Perfil:** Os jogadores podem atualizar seu nome de usuário e alterar sua senha.
 
-## Run Locally
+### Para Administradores
+- **Painel de Administração:** Uma interface exclusiva para o administrador monitorar e controlar o jogo.
+- **Monitoramento em Tempo Real:** Visualize o status do jogo (esperando, em andamento, pausado), o número de jogadores, a quantidade de bolas sorteadas e o prêmio acumulado.
+- **Controles Manuais do Jogo:**
+  - **Forçar Início:** Inicie a partida manualmente a qualquer momento.
+  - **Pausar/Retomar:** Pause o jogo, informando um motivo que será exibido para todos os jogadores, e retome quando desejar.
+  - **Resetar Jogo:** Reinicie a rodada (só é permitido se nenhuma cartela tiver sido vendida).
+- **Configurações de Tempo:** Ajuste a duração do intervalo entre os sorteios e o tempo de exibição da tela de vencedores.
 
-**Prerequisites:**  Node.js
+---
 
+## 🗺️ Mapa do Jogo (Estrutura da Aplicação)
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+1.  **Tela de Autenticação:** A porta de entrada do jogo. Os usuários podem escolher entre `Entrar` em uma conta existente ou `Registrar` uma nova.
+2.  **Lobby do Jogo:** Após o login, os jogadores chegam aqui. É a área de espera onde podem se preparar para a próxima rodada, comprando cartelas e gerenciando seu perfil.
+3.  **Tela do Jogo:** Onde a ação acontece. Esta tela exibe o painel com os números sorteados, as cartelas do jogador e o ranking de progresso dos outros participantes.
+4.  **Painel de Administração:** Acessível apenas pelo administrador a partir do lobby, este painel é o centro de controle do jogo.
+
+---
+
+## 룰 Manual e Regras do Jogo
+
+### Objetivo
+O objetivo é ser o primeiro jogador a completar uma linha em qualquer uma de suas cartelas. Uma linha pode ser **horizontal, vertical ou diagonal**.
+
+### Como Jogar
+1.  **Crie uma Conta e Faça Login:** Use seu e-mail ou conta Google para acessar o jogo. Novos jogadores recebem um bônus de 100 Fichas (F).
+2.  **Acesse o Lobby:** Após o login, você estará no lobby. Aqui você pode ver seu saldo de fichas.
+3.  **Compre Suas Cartelas:** Antes de a partida começar, clique no botão "Comprar Cartela (10 F)". Cada cartela custa 10 Fichas. Você pode comprar até 50 cartelas por rodada.
+4.  **Aguarde o Início:** O jogo não começa automaticamente. O administrador iniciará a partida manualmente quando houver jogadores suficientes. A exigência mínima é de **2 jogadores e 2 cartelas vendidas**.
+5.  **Acompanhe o Sorteio:** Uma vez que o jogo começa, os números (de 1 a 60) são sorteados um a um. O sistema marca automaticamente os números sorteados em todas as suas cartelas.
+6.  **BINGO!** O primeiro jogador a completar uma linha (5 números) em qualquer direção ganha. O jogo é pausado, e a tela de vencedores é exibida para todos.
+7.  **Retorno ao Lobby:** Após a exibição dos vencedores, todos os jogadores retornam automaticamente ao lobby para se prepararem para a próxima rodada.
+
+### Prêmios
+- Cada cartela comprada por 10 F adiciona 9 F ao prêmio acumulado da rodada.
+- O prêmio total é dividido igualmente entre todos os vencedores da rodada.
+
+---
+
+## 💻 Guia de Instalação para Desenvolvedores
+
+Siga estes passos para configurar e executar o projeto em seu ambiente local.
+
+### Pré-requisitos
+- Um editor de código, como o **Visual Studio Code**.
+- A extensão **Live Server** para o VS Code (ou qualquer servidor web local).
+- Uma conta Google para criar um projeto no Firebase.
+
+### Passo 1: Configurar o Firebase
+1.  Acesse o [Console do Firebase](https://console.firebase.google.com/).
+2.  Clique em **"Adicionar projeto"** e siga as instruções para criar um novo projeto.
+3.  No painel do seu projeto, vá para a seção **Authentication**.
+    - Clique em **"Primeiros passos"**.
+    - Habilite os provedores de login **"E-mail/senha"** e **"Google"**.
+4.  Em seguida, vá para a seção **Firestore Database**.
+    - Clique em **"Criar banco de dados"**.
+    - Inicie no **modo de produção** e escolha uma localização para o servidor.
+5.  Volte para a página principal do seu projeto, clique no ícone de engrenagem e vá para **"Configurações do Projeto"**.
+    - Na aba "Geral", desça até a seção "Seus apps".
+    - Clique no ícone da web (`</>`) para registrar um novo aplicativo da web.
+    - Dê um nome ao seu app e clique em "Registrar app".
+    - O Firebase fornecerá um objeto de configuração `firebaseConfig`. **Copie este objeto.**
+
+### Passo 2: Configurar o Projeto Localmente
+1.  Clone ou baixe os arquivos do projeto para o seu computador.
+2.  Abra a pasta do projeto no VS Code.
+3.  Navegue até o arquivo `firebase/config.tsx`.
+4.  **Substitua** o objeto `firebaseConfig` existente pelo que você copiou do seu projeto Firebase.
+
+### Passo 3: Definir o Administrador do Jogo
+1.  Execute o aplicativo (veja o Passo 4) e crie uma conta de usuário para você (pode ser com e-mail/senha ou Google).
+2.  Volte ao **Console do Firebase**, vá para a seção **Authentication**.
+3.  Na lista de usuários, encontre a conta que você acabou de criar e **copie o UID do usuário**.
+4.  Abra o arquivo `components/GameLobby.tsx`.
+5.  Encontre a constante `ADMIN_UID` e **substitua o valor existente pelo seu UID**.
+    ```javascript
+    // Exemplo:
+    const ADMIN_UID = 'SEU_UID_DE_ADMINISTRADOR_AQUI';
+    ```
+
+### Passo 4: Executar a Aplicação
+Este projeto não usa um empacotador como Vite ou Create React App, então não há um comando `npm start`. A maneira mais fácil de executá-lo é com um servidor local.
+
+1.  Certifique-se de ter a extensão **Live Server** instalada no VS Code.
+2.  Clique com o botão direito no arquivo `index.html` na barra de explorador de arquivos.
+3.  Selecione **"Open with Live Server"**.
+4.  Seu navegador padrão abrirá com o jogo em execução. Agora você pode fazer login, e se o seu UID estiver configurado corretamente, o botão "Painel do Admin" aparecerá no lobby.
