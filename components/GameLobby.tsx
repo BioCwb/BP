@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { type UserData } from '../App';
 import type firebase from 'firebase/compat/app';
 import { db, arrayUnion, increment, serverTimestamp } from '../firebase/config';
@@ -9,6 +9,7 @@ interface GameLobbyProps {
   user: firebase.User;
   userData: UserData;
   onPlay: () => void;
+  onSpectate: () => void;
   onManageProfile: () => void;
   onLogout: () => void;
   onGoToAdmin: () => void;
@@ -21,7 +22,15 @@ interface BingoCardData {
     numbers: number[];
 }
 
-export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, onManageProfile, onLogout, onGoToAdmin }) => {
+interface ChatMessage {
+    id: string;
+    uid: string;
+    displayName: string;
+    text: string;
+    timestamp: firebase.firestore.Timestamp;
+}
+
+export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, onSpectate, onManageProfile, onLogout, onGoToAdmin }) => {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [myCardCount, setMyCardCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -29,9 +38,13 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
   const [isBonusAvailable, setIsBonusAvailable] = useState(false);
   const [bonusCooldown, setBonusCooldown] = useState('');
   const [isClaimingBonus, setIsClaimingBonus] = useState(false);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   const gameDocRef = useMemo(() => db.collection('games').doc('active_game'), []);
   const myCardsCollectionRef = useMemo(() => db.collection('player_cards').doc(user.uid).collection('cards').doc('active_game'), [user.uid]);
+  const chatCollectionRef = useMemo(() => db.collection('chat'), []);
 
   useEffect(() => {
     const unsubGame = gameDocRef.onSnapshot((doc) => {
@@ -49,9 +62,18 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
             setMyCardCount(0);
         }
     });
+    
+    const unsubChat = chatCollectionRef.orderBy('timestamp', 'asc').limitToLast(100).onSnapshot(snapshot => {
+        const messages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ChatMessage));
+        setChatMessages(messages);
+    });
 
-    return () => { unsubGame(); unsubCards(); };
-  }, [gameDocRef, myCardsCollectionRef]);
+    return () => { unsubGame(); unsubCards(); unsubChat(); };
+  }, [gameDocRef, myCardsCollectionRef, chatCollectionRef]);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
   
   // Effect to check and update the daily bonus availability and cooldown timer.
   useEffect(() => {
@@ -82,6 +104,24 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
 
     return () => clearInterval(timer);
   }, [userData.lastBonusClaimedAt]);
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newMessage.trim() === '') return;
+
+    try {
+        await chatCollectionRef.add({
+            uid: user.uid,
+            displayName: userData.displayName,
+            text: newMessage,
+            timestamp: serverTimestamp()
+        });
+        setNewMessage('');
+    } catch (error) {
+        console.error("Error sending message:", error);
+        setError("Não foi possível enviar a mensagem.");
+    }
+  };
   
   const handleBuyCard = async () => {
     setError(null);
@@ -161,58 +201,93 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
   const canBuyCard = gameState?.status === 'waiting' && !isBuying;
 
   return (
-    <div className="bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl p-8 text-center w-full max-w-md">
-        <div className="mb-6">
-            <h2 className="text-3xl font-bold text-white">Bem-vindo, {userData.displayName}!</h2>
-            <p className="text-2xl font-bold text-yellow-400 mt-2">Saldo: {typeof userData.fichas === 'number' ? userData.fichas : '...'} F</p>
-            <p className="text-lg text-gray-300 mt-1">Você tem {myCardCount} cartela(s).</p>
-        </div>
-        
-        {error && <p className="text-red-400 bg-red-900 bg-opacity-50 p-3 rounded-lg mb-4">{error}</p>}
-        
-        <div className="space-y-4">
-             <button
-                onClick={onPlay}
-                className="w-full py-4 px-4 bg-green-600 hover:bg-green-700 rounded-lg text-white font-bold text-xl transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
-             >
-                JOGAR BINGO
-            </button>
-             <button
-                onClick={handleBuyCard}
-                disabled={!canBuyCard}
-                className="w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50 disabled:bg-gray-600 disabled:cursor-not-allowed"
-             >
-                {isBuying ? 'Comprando...' : 'Comprar Cartela (10 F)'}
-            </button>
-             <button
-                onClick={handleDailyBonus}
-                disabled={!isBonusAvailable || isClaimingBonus}
-                className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 disabled:bg-gray-600 disabled:cursor-not-allowed"
-             >
-                {isClaimingBonus ? 'Resgatando...' : (isBonusAvailable ? 'Resgatar Bônus Diário (10 F)' : `Próximo bônus em ${bonusCooldown}`)}
-            </button>
-             <button
-                onClick={onManageProfile}
-                className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50"
-             >
-                Gerenciar Perfil
-            </button>
+    <div className="bg-gray-800 bg-opacity-70 backdrop-blur-sm rounded-xl shadow-2xl p-6 md:p-8 w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-8">
+        {/* Coluna da Esquerda: Controles do Jogo */}
+        <div className="text-center">
+            <div className="mb-6">
+                <h2 className="text-3xl font-bold text-white">Bem-vindo, {userData.displayName}!</h2>
+                <p className="text-2xl font-bold text-yellow-400 mt-2">Saldo: {typeof userData.fichas === 'number' ? userData.fichas : '...'} F</p>
+                <p className="text-lg text-gray-300 mt-1">Você tem {myCardCount} cartela(s).</p>
+            </div>
             
-            {user.uid === ADMIN_UID && (
-              <button
-                onClick={onGoToAdmin}
-                className="w-full py-3 px-4 bg-yellow-600 hover:bg-yellow-700 rounded-lg text-black font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-opacity-50"
-              >
-                Painel do Admin
-              </button>
-            )}
+            {error && <p className="text-red-400 bg-red-900 bg-opacity-50 p-3 rounded-lg mb-4">{error}</p>}
+            
+            <div className="space-y-4">
+                 <button
+                    onClick={onPlay}
+                    className="w-full py-4 px-4 bg-green-600 hover:bg-green-700 rounded-lg text-white font-bold text-xl transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
+                 >
+                    JOGAR BINGO
+                </button>
+                 <button
+                    onClick={handleBuyCard}
+                    disabled={!canBuyCard}
+                    className="w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50 disabled:bg-gray-600 disabled:cursor-not-allowed"
+                 >
+                    {isBuying ? 'Comprando...' : 'Comprar Cartela (10 F)'}
+                </button>
+                <button
+                    onClick={onSpectate}
+                    className="w-full py-3 px-4 bg-teal-600 hover:bg-teal-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-opacity-50"
+                >
+                    Assistir como Espectador
+                </button>
+                 <button
+                    onClick={handleDailyBonus}
+                    disabled={!isBonusAvailable || isClaimingBonus}
+                    className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 disabled:bg-gray-600 disabled:cursor-not-allowed"
+                 >
+                    {isClaimingBonus ? 'Resgatando...' : (isBonusAvailable ? 'Resgatar Bônus Diário (10 F)' : `Próximo bônus em ${bonusCooldown}`)}
+                </button>
+                 <button
+                    onClick={onManageProfile}
+                    className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50"
+                 >
+                    Gerenciar Perfil
+                </button>
+                
+                {user.uid === ADMIN_UID && (
+                  <button
+                    onClick={onGoToAdmin}
+                    className="w-full py-3 px-4 bg-yellow-600 hover:bg-yellow-700 rounded-lg text-black font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-opacity-50"
+                  >
+                    Painel do Admin
+                  </button>
+                )}
 
-            <button
-                onClick={onLogout}
-                className="w-full py-3 px-4 bg-red-600 hover:bg-red-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50"
-            >
-                Sair
-            </button>
+                <button
+                    onClick={onLogout}
+                    className="w-full py-3 px-4 bg-red-600 hover:bg-red-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50"
+                >
+                    Sair
+                </button>
+            </div>
+        </div>
+
+        {/* Coluna da Direita: Chat */}
+        <div className="flex flex-col bg-gray-900 bg-opacity-50 rounded-lg p-4 h-[60vh] md:h-auto">
+            <h3 className="text-xl font-bold text-center text-white mb-4 border-b border-gray-700 pb-2">Chat do Lobby</h3>
+            <div className="flex-grow overflow-y-auto pr-2 space-y-4">
+                {chatMessages.map(msg => (
+                    <div key={msg.id} className={`flex flex-col ${msg.uid === user.uid ? 'items-end' : 'items-start'}`}>
+                        <div className={`p-3 rounded-lg max-w-xs ${msg.uid === user.uid ? 'bg-purple-700' : 'bg-gray-700'}`}>
+                            <p className={`text-xs font-bold mb-1 ${msg.uid === user.uid ? 'text-right text-purple-200' : 'text-left text-blue-300'}`}>{msg.displayName}</p>
+                            <p className="text-white text-sm break-words">{msg.text}</p>
+                        </div>
+                    </div>
+                ))}
+                <div ref={chatEndRef} />
+            </div>
+            <form onSubmit={handleSendMessage} className="mt-4 flex gap-2">
+                <input
+                    type="text"
+                    value={newMessage}
+                    onChange={(e) => setNewMessage(e.target.value)}
+                    placeholder="Digite sua mensagem..."
+                    className="flex-grow py-2 px-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+                <button type="submit" className="py-2 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-semibold">Enviar</button>
+            </form>
         </div>
     </div>
   );

@@ -81,7 +81,7 @@ export const calculateCardProgress = (numbers: number[], drawnNumbers: number[])
 };
 
 // New function to check for a winning line based on player's manual marks
-export const isWinningLine = (cardNumbers: number[], markedNumbers: number[]): boolean => {
+export const isWinningLine = (cardNumbers: number[], markedNumbers: number[], drawnNumbers: number[]): boolean => {
     const card: number[][] = [];
     for (let i = 0; i < 5; i++) {
         card.push(cardNumbers.slice(i * 5, i * 5 + 5));
@@ -92,21 +92,34 @@ export const isWinningLine = (cardNumbers: number[], markedNumbers: number[]): b
         return markedNumbers.includes(num);
     };
 
+    const checkLine = (line: number[]): boolean => {
+        // Check 1: Does the player have all numbers in this line marked?
+        const isLineComplete = line.every(isMarkedByPlayer);
+        if (!isLineComplete) return false;
+
+        // Security Check 2: Are all the numbers the player marked in this line *actually* in the official drawn numbers list?
+        const allMarksAreValid = line.every(num => num === 0 || drawnNumbers.includes(num));
+        return allMarksAreValid;
+    }
+
     // Check rows
     for (let i = 0; i < 5; i++) {
-        if (card[i].every(isMarkedByPlayer)) return true;
+        if (checkLine(card[i])) return true;
     }
 
     // Check columns
     for (let j = 0; j < 5; j++) {
-        if (card.every(row => isMarkedByPlayer(row[j]))) return true;
+        const column = card.map(row => row[j]);
+        if (checkLine(column)) return true;
     }
 
     // Check diagonal (top-left to bottom-right)
-    if (card.every((row, i) => isMarkedByPlayer(row[i]))) return true;
+    const diag1 = card.map((row, i) => row[i]);
+    if (checkLine(diag1)) return true;
 
     // Check diagonal (top-right to bottom-left)
-    if (card.every((row, i) => isMarkedByPlayer(row[4 - i]))) return true;
+    const diag2 = card.map((row, i) => row[4 - i]);
+    if (checkLine(diag2)) return true;
 
     return false;
 };

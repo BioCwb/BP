@@ -10,26 +10,24 @@ interface BingoCardProps {
     onBingo: (cardIndex: number) => void;
     gameStatus: 'waiting' | 'running' | 'ended' | 'paused';
     isWinningCard?: boolean;
+    isSpectatorView?: boolean;
 }
 
-export const BingoCard: React.FC<BingoCardProps> = ({ cardIndex, numbers, drawnNumbers, markedNumbers, onMarkNumber, onBingo, gameStatus, isWinningCard = false }) => {
+export const BingoCard: React.FC<BingoCardProps> = ({ cardIndex, numbers, drawnNumbers, markedNumbers, onMarkNumber, onBingo, gameStatus, isWinningCard = false, isSpectatorView = false }) => {
     const [timedOutNumbers, setTimedOutNumbers] = useState<number[]>([]);
     const timeoutsRef = useRef<{ [key: number]: number }>({});
 
     // Effect to manage adding highlights after a 3-second delay
     useEffect(() => {
-        // This effect runs only when the game is running.
-        if (gameStatus !== 'running') {
-            setTimedOutNumbers([]); // Clear highlights if game is not running
+        if (gameStatus !== 'running' || isSpectatorView) {
+            setTimedOutNumbers([]);
             return;
         }
 
-        // Identify numbers on the card that are drawn but not yet marked.
         const availableUnmarked = numbers.filter(
             num => num !== 0 && drawnNumbers.includes(num) && !markedNumbers.includes(num)
         );
         
-        // Start timers for newly available numbers
         availableUnmarked.forEach(num => {
             if (!timeoutsRef.current[num]) {
                 timeoutsRef.current[num] = window.setTimeout(() => {
@@ -38,7 +36,6 @@ export const BingoCard: React.FC<BingoCardProps> = ({ cardIndex, numbers, drawnN
             }
         });
 
-        // Clear timers and remove highlights for numbers that are now marked.
         markedNumbers.forEach(num => {
             if (timeoutsRef.current[num]) {
                 clearTimeout(timeoutsRef.current[num]);
@@ -46,32 +43,34 @@ export const BingoCard: React.FC<BingoCardProps> = ({ cardIndex, numbers, drawnN
             }
         });
 
-        // Update the timedOutNumbers state to remove any that have been marked.
         setTimedOutNumbers(prev => prev.filter(num => !markedNumbers.includes(num)));
 
-        // Cleanup function to clear all timers when the component unmounts or dependencies change.
         return () => {
             Object.values(timeoutsRef.current).forEach(clearTimeout);
             timeoutsRef.current = {};
         };
-    }, [drawnNumbers, markedNumbers, numbers, gameStatus]);
+    }, [drawnNumbers, markedNumbers, numbers, gameStatus, isSpectatorView]);
 
 
     const canCallBingo = useMemo(() => {
-        if (gameStatus !== 'running') return false;
-        return isWinningLine(numbers, markedNumbers);
-    }, [numbers, markedNumbers, gameStatus]);
+        if (gameStatus !== 'running' || isSpectatorView) return false;
+        return isWinningLine(numbers, markedNumbers, drawnNumbers);
+    }, [numbers, markedNumbers, gameStatus, isSpectatorView, drawnNumbers]);
     
     return (
         <div className={`flex flex-col p-2 rounded-lg shadow-lg transition-all duration-500 ${isWinningCard ? 'bg-green-500 bingo-animation' : 'bg-blue-900 bg-opacity-50'}`}>
             <div className="grid grid-cols-5 gap-1 aspect-square">
                 {numbers.map((num, index) => {
                     const isCenter = index === 12;
-                    const isMarked = isCenter || markedNumbers.includes(num);
                     const isDrawn = drawnNumbers.includes(num);
-                    const needsHighlight = timedOutNumbers.includes(num);
+                    const isPlayerMarked = markedNumbers.includes(num);
 
-                    const canMark = isDrawn && !isCenter;
+                    // In spectator view, a number is considered "marked" if it has been drawn by the game.
+                    // In player view, it's marked if the player has clicked it.
+                    const isMarked = isCenter || (isSpectatorView ? isDrawn : isPlayerMarked);
+
+                    const needsHighlight = !isSpectatorView && timedOutNumbers.includes(num);
+                    const canMark = !isSpectatorView && isDrawn && !isCenter;
 
                     return (
                         <button 
@@ -89,13 +88,15 @@ export const BingoCard: React.FC<BingoCardProps> = ({ cardIndex, numbers, drawnN
                     );
                 })}
             </div>
-            <button 
-                onClick={() => onBingo(cardIndex)}
-                disabled={!canCallBingo}
-                className="mt-2 w-full py-2 px-4 bg-green-600 hover:bg-green-700 rounded-lg text-white font-bold text-xl transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 disabled:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-                BINGO!
-            </button>
+            {!isSpectatorView && (
+                <button 
+                    onClick={() => onBingo(cardIndex)}
+                    disabled={!canCallBingo}
+                    className="mt-2 w-full py-2 px-4 bg-green-600 hover:bg-green-700 rounded-lg text-white font-bold text-xl transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 disabled:bg-gray-600 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                    BINGO!
+                </button>
+            )}
         </div>
     );
 };

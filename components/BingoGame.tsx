@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type firebase from 'firebase/compat/app';
 import { type UserData } from '../App';
-import { db, arrayUnion, increment } from '../firebase/config';
+import { db, increment } from '../firebase/config';
 // FIX: Removed unused v9 firestore imports to align with the v8 compatibility syntax.
 import { BingoCard } from './BingoCard';
-import { calculateCardProgress, isWinningLine } from '../utils/bingoUtils';
+import { isWinningLine } from '../utils/bingoUtils';
 import { BingoMasterBoard } from './BingoMasterBoard';
 
 
@@ -32,6 +32,8 @@ interface BingoGameProps {
   user: firebase.User;
   userData: UserData;
   onBackToLobby: () => void;
+  onSessionReset: () => void; // For critical error recovery
+  isSpectator?: boolean;
 }
 
 const getBingoLetter = (num: number) => {
@@ -44,80 +46,131 @@ const getBingoLetter = (num: number) => {
 };
 
 
-export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLobby }) => {
+export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLobby, onSessionReset, isSpectator = false }) => {
     const [gameState, setGameState] = useState<GameState | null>(null);
     const [myCards, setMyCards] = useState<BingoCardData[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [endGameCountdown, setEndGameCountdown] = useState(10);
     // New state to track player's manual marks on each card
     const [playerMarkedNumbers, setPlayerMarkedNumbers] = useState<{ [cardIndex: number]: number[] }>({});
+    const [playerStatuses, setPlayerStatuses] = useState<{ [uid: string]: 'online' | 'offline' }>({});
+    const [allPlayerCards, setAllPlayerCards] = useState<{[uid: string]: {displayName: string, cards: BingoCardData[]}}>({});
 
 
     const gameDocRef = useMemo(() => db.collection('games').doc('active_game'), []);
     const myCardsCollectionRef = useMemo(() => db.collection('player_cards').doc(user.uid).collection('cards').doc('active_game'), [user.uid]);
 
     useEffect(() => {
+        let isMounted = true;
         const unsubGame = gameDocRef.onSnapshot((doc) => {
+            if (!isMounted) return;
             if (doc.exists) {
                 const newState = doc.data() as GameState;
-                // Reset manual marks when a new game starts
                 if (newState.status === 'waiting' && gameState?.status !== 'waiting') {
                     setPlayerMarkedNumbers({});
                 }
                 setGameState(newState);
             } else {
-                if (user) {
-                     db.runTransaction(async (transaction) => {
-                        const gameDoc = await transaction.get(gameDocRef);
-                        if (!gameDoc.exists) {
-                            const newGameState: GameState = {
-                                status: 'waiting', 
-                                drawnNumbers: [], 
-                                players: {}, 
-                                prizePool: 0, 
-                                winners: [], 
-                                host: user.uid, 
-                                countdown: 30, // Default lobby time
-                                lastWinnerAnnouncement: "",
-                                lobbyCountdownDuration: 30,
-                                drawIntervalDuration: 8,
-                                endGameDelayDuration: 15
-                            };
-                            transaction.set(gameDocRef, newGameState);
-                        }
-                    }).catch((err) => {
-                        console.error("Game creation transaction failed:", err);
-                        setError('Não foi possível criar um novo jogo. Verifique sua conexão e tente novamente.');
-                    });
-                }
+                 setError('O jogo ativo não foi encontrado. Redirecionando para o lobby.');
+                 setTimeout(() => onBackToLobby(), 3000);
             }
         }, (err) => {
+            if (!isMounted) return;
             console.error("Error fetching game state:", err);
-            setError('Falha ao conectar-se ao jogo. Verifique sua conexão e desative bloqueadores de anúncio.');
+            setError('Falha ao conectar-se ao jogo. Verifique sua conexão.');
         });
+        
+        let unsubCards: (() => void) | null = null;
+        if (!isSpectator) {
+            unsubCards = myCardsCollectionRef.onSnapshot((doc) => {
+                if (!isMounted) return;
+                setMyCards(doc.exists ? (doc.data()!.cards || []) : []);
+            }, (err) => {
+                if (!isMounted) return;
+                console.error("Error fetching player cards:", err);
+                setError('Falha ao carregar suas cartelas. Verifique sua conexão.');
+            });
+        }
 
-        const unsubCards = myCardsCollectionRef.onSnapshot((doc) => {
-            if (doc.exists) {
-                setMyCards(doc.data()!.cards || []);
-            } else {
-                setMyCards([]);
+        return () => { 
+            isMounted = false;
+            unsubGame();
+            if (unsubCards) unsubCards();
+        };
+    }, [user, gameDocRef, myCardsCollectionRef, gameState?.status, isSpectator, onBackToLobby]);
+
+    // Fetch all player cards for spectator mode
+    useEffect(() => {
+        if (!isSpectator || !gameState) return;
+
+        const playerIds = Object.keys(gameState.players);
+        const unsubscribers = playerIds.map(uid => {
+            const ref = db.collection('player_cards').doc(uid).collection('cards').doc('active_game');
+            return ref.onSnapshot(doc => {
+                const cards = doc.exists ? doc.data()!.cards || [] : [];
+                setAllPlayerCards(prev => ({
+                    ...prev,
+                    [uid]: {
+                        displayName: gameState.players[uid]?.displayName || 'Jogador',
+                        cards: cards
+                    }
+                }));
+            });
+        });
+        
+        return () => unsubscribers.forEach(unsub => unsub());
+    }, [isSpectator, gameState]);
+    
+    // Player status (presence) listener
+    useEffect(() => {
+        if (!gameState || Object.keys(gameState.players).length === 0) return;
+
+        const playerIds = Object.keys(gameState.players);
+        const statusRef = db.collection('player_status');
+
+        const updateStatuses = (snapshot?: firebase.firestore.QuerySnapshot) => {
+            const now = Date.now();
+            const currentStatuses: { [uid: string]: 'online' | 'offline' } = {};
+            const lastSeenTimestamps: { [uid: string]: number } = {};
+
+            if (snapshot) {
+                snapshot.forEach(doc => {
+                    const data = doc.data();
+                    const lastSeen = data.lastSeen?.toMillis();
+                    if (lastSeen) {
+                       lastSeenTimestamps[doc.id] = lastSeen;
+                    }
+                });
             }
-        }, (err) => {
-            console.error("Error fetching player cards:", err);
-            setError('Falha ao carregar suas cartelas. Verifique sua conexão e desative bloqueadores de anúncio.');
-        });
 
-        return () => { unsubGame(); unsubCards(); };
-    }, [user, gameDocRef, myCardsCollectionRef, gameState?.status]);
+            playerIds.forEach(id => {
+                const lastSeen = lastSeenTimestamps[id];
+                 currentStatuses[id] = (lastSeen && (now - lastSeen < 30000)) ? 'online' : 'offline';
+            });
+            
+            setPlayerStatuses(currentStatuses);
+        };
+        
+        const unsub = statusRef.where(firebase.firestore.FieldPath.documentId(), 'in', playerIds).onSnapshot(updateStatuses);
+
+        // Periodically check statuses to catch timeouts without a new snapshot
+        const interval = setInterval(() => updateStatuses(), 10000);
+
+        return () => {
+            unsub();
+            clearInterval(interval);
+        };
+    }, [gameState]);
     
     // Countdown timer for the end-of-game screen
     useEffect(() => {
         if (gameState?.status === 'ended') {
             const duration = gameState.endGameDelayDuration || 10;
-            setEndGameCountdown(duration); // Reset on game end
+            setEndGameCountdown(duration);
             const timer = setInterval(() => {
                 setEndGameCountdown(prev => {
                     if (prev <= 1) {
+                        clearInterval(timer);
                         onBackToLobby();
                         return 0;
                     }
@@ -135,10 +188,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
         let intervalId: number | undefined;
         let timeoutId: number | undefined;
 
-        if (gameState.status === 'waiting') {
-            // Automatic start is disabled; admin must start it.
-            // Clear any lingering timers.
-        } else if (gameState.status === 'running') {
+        if (gameState.status === 'running') {
             intervalId = window.setInterval(async () => {
                  await db.runTransaction(async (t) => {
                     const gameDoc = await t.get(gameDocRef);
@@ -165,32 +215,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
             }, 1000);
         } else if (gameState.status === 'ended') {
              timeoutId = window.setTimeout(async () => {
-                const winnerNames = gameState.winners.map(w => w.displayName).join(', ');
-                const announcement = winnerNames ? `Último(s) vencedor(es): ${winnerNames}` : "";
-
-                const batch = db.batch();
-                batch.update(gameDocRef, { 
-                    status: 'waiting', 
-                    drawnNumbers: [], 
-                    prizePool: 0, 
-                    winners: [], 
-                    countdown: gameState.lobbyCountdownDuration || 15, 
-                    lastWinnerAnnouncement: announcement,
-                    players: {} // Reset players for the new round
-                });
-                
-                // This is a simplified approach. For a production app, clearing player cards should be handled
-                // by a Cloud Function to ensure all subcollections are deleted reliably.
-                const playerIds = Object.keys(gameState.players);
-                for (const playerId of playerIds) {
-                    const playerCardsRef = db.collection('player_cards').doc(playerId).collection('cards').doc('active_game');
-                    const doc = await playerCardsRef.get();
-                    if(doc.exists) {
-                       batch.delete(playerCardsRef);
-                    }
-                }
-                await batch.commit();
-
+                // Game reset logic now handled by admin panel
             }, (gameState.endGameDelayDuration || 10) * 1000); 
         }
         
@@ -203,29 +228,19 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
     
     const onBingo = useCallback(async (cardIndex: number) => {
         setError(null);
-        if (!gameState || gameState.status !== 'running' || gameState.winners.some(w => w.uid === user.uid)) return;
+        if (isSpectator || !gameState || gameState.status !== 'running' || gameState.winners.some(w => w.uid === user.uid)) return;
     
         const card = myCards[cardIndex];
         if (!card) return;
     
         const marks = playerMarkedNumbers[cardIndex] || [];
     
-        // Security Check 1: Do the marked numbers actually form a line on this card?
-        if (!isWinningLine(card.numbers, marks)) {
-            setError("Linha de bingo inválida! Continue marcando.");
+        if (!isWinningLine(card.numbers, marks, gameState.drawnNumbers)) {
+            setError("Bingo inválido! Continue marcando ou verifique seus números.");
             setTimeout(() => setError(null), 3000);
             return;
         }
     
-        // Security Check 2: Are all the numbers the player marked actually in the official drawn numbers list?
-        const allMarksAreValid = marks.every(mark => mark === 0 || gameState.drawnNumbers.includes(mark));
-        if (!allMarksAreValid) {
-            setError("Bingo inválido! Alguns números marcados não foram sorteados.");
-            setTimeout(() => setError(null), 3000);
-            return;
-        }
-    
-        // If all checks pass, we have a legitimate winner.
         const prizePerWinner = Math.floor(gameState.prizePool / (gameState.winners.length + 1));
         const newWinner = { uid: user.uid, displayName: user.displayName || 'Player', card: card.numbers };
         const allWinners = [...gameState.winners, newWinner];
@@ -242,10 +257,10 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
         }
     
         await batch.commit();
-    }, [gameState, user, gameDocRef, myCards, playerMarkedNumbers]);
+    }, [gameState, user, gameDocRef, myCards, playerMarkedNumbers, isSpectator]);
     
     const handleMarkNumber = useCallback((cardIndex: number, num: number) => {
-        // Prevent marking if the number hasn't been drawn yet
+        if (isSpectator) return;
         if (!gameState?.drawnNumbers.includes(num) && num !== 0) return;
 
         setPlayerMarkedNumbers(prev => {
@@ -255,32 +270,9 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                 : [...currentMarks, num];
             return { ...prev, [cardIndex]: newMarks };
         });
-    }, [gameState?.drawnNumbers]);
-    
-     // Player Progress Update Effect
-    useEffect(() => {
-        if (!myCards.length || !gameState || gameState.status !== 'running') return;
-        
-        let bestProgress = 5; // Default best is 5 numbers for a line
-        for (const cardData of myCards) {
-            const progress = calculateCardProgress(cardData.numbers, gameState.drawnNumbers);
-            if (progress.numbersToWin < bestProgress) {
-                bestProgress = progress.numbersToWin;
-            }
-        }
-
-        const currentProgress = gameState.players?.[user.uid]?.progress;
-        if (bestProgress !== currentProgress) {
-            gameDocRef.update({
-                [`players.${user.uid}.progress`]: bestProgress
-            }).catch(err => console.error("Failed to update progress", err));
-        }
-
-    }, [myCards, gameState, user.uid, gameDocRef]);
+    }, [gameState?.drawnNumbers, isSpectator]);
 
     const sortedPlayers = useMemo(() => {
-        // This hook is moved before the early return to comply with the Rules of Hooks.
-        // It's also made safe to handle cases where gameState or gameState.players might be null.
         if (!gameState || !gameState.players) return [];
         return (Object.entries(gameState.players) as [string, { displayName: string, cardCount: number, progress?: number }][])
             .sort(([, a], [, b]) => {
@@ -294,14 +286,71 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                 return cardCountB - cardCountA;
             });
     }, [gameState]);
+    
+    if (error) {
+        return (
+            <div className="w-full h-screen flex flex-col items-center justify-center text-center p-4">
+                <h2 className="text-3xl font-bold text-red-400 mb-4">Ocorreu um Erro</h2>
+                <p className="text-lg text-gray-300 mb-6">{error}</p>
+                <button
+                    onClick={onSessionReset}
+                    className="py-3 px-6 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-semibold"
+                >
+                    Reiniciar Sessão
+                </button>
+            </div>
+        );
+    }
 
-
-    if (!gameState) return <div className="text-center text-xl">Carregando Jogo de Bingo...</div>;
+    if (!gameState) return <div className="text-center text-xl w-full h-screen flex items-center justify-center">Carregando Jogo de Bingo...</div>;
 
     const lastDrawnNumber = gameState.drawnNumbers[gameState.drawnNumbers.length - 1] || null;
 
+    const renderCards = () => {
+        if (isSpectator) {
+            // FIX: The type of `playerData` was inferred as `unknown`.
+            // Casting the result of `Object.entries` to a typed array resolves the error.
+            return (Object.entries(allPlayerCards) as [string, { displayName: string, cards: BingoCardData[] }][]).map(([uid, playerData]) => (
+                <div key={uid}>
+                    <h3 className="text-lg font-bold text-center text-yellow-300 my-2 sticky top-0 bg-gray-800 py-1 z-10">{playerData.displayName}'s Cards ({playerData.cards.length})</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-2">
+                        {playerData.cards.map((cardData, index) => (
+                             <BingoCard 
+                                key={`${uid}-${index}`} 
+                                cardIndex={index}
+                                numbers={cardData.numbers} 
+                                drawnNumbers={gameState.drawnNumbers} 
+                                onBingo={() => {}} 
+                                gameStatus={gameState.status}
+                                markedNumbers={[]}
+                                onMarkNumber={() => {}}
+                                isSpectatorView={true}
+                             />
+                        ))}
+                    </div>
+                </div>
+            ));
+        }
+        return (
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-2">
+                {myCards.map((cardData, index) => (
+                    <BingoCard 
+                        key={index} 
+                        cardIndex={index}
+                        numbers={cardData.numbers} 
+                        drawnNumbers={gameState.drawnNumbers} 
+                        onBingo={onBingo} 
+                        gameStatus={gameState.status}
+                        markedNumbers={playerMarkedNumbers[index] || []}
+                        onMarkNumber={handleMarkNumber}
+                     />
+                ))}
+            </div>
+        );
+    };
+
     return (
-        <div className="w-full max-w-7xl mx-auto p-4 flex flex-col flex-grow relative">
+        <div className="w-full max-w-7xl mx-auto p-4 flex flex-col flex-grow relative h-screen">
              {gameState.status === 'paused' && (
                 <div className="absolute inset-0 bg-black bg-opacity-80 flex flex-col items-center justify-center z-40 text-center p-4 rounded-lg">
                     <h2 className="text-5xl font-bold text-yellow-400 animate-pulse mb-4">JOGO PAUSADO</h2>
@@ -310,11 +359,11 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                     )}
                 </div>
             )}
-            <header className="flex justify-between items-center bg-gray-900 bg-opacity-70 p-4 rounded-lg mb-4">
+            <header className="flex-shrink-0 flex justify-between items-center bg-gray-900 bg-opacity-70 p-4 rounded-lg mb-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-purple-400">NOITE DO BINGO</h1>
+                    <h1 className="text-3xl font-bold text-purple-400">{isSpectator ? "MODO ESPECTADOR" : "NOITE DO BINGO"}</h1>
                      <p className="text-gray-300">Bem-vindo, {userData.displayName}</p>
-                     <p className="text-yellow-400">Saldo: <span className="font-bold">{typeof userData.fichas === 'number' ? userData.fichas : '...'} F</span></p>
+                     {!isSpectator && <p className="text-yellow-400">Saldo: <span className="font-bold">{typeof userData.fichas === 'number' ? userData.fichas : '...'} F</span></p>}
                      <p className="text-yellow-400">Prêmio Acumulado: <span className="font-bold">{typeof gameState.prizePool === 'number' ? gameState.prizePool : '0'} F</span></p>
                 </div>
                 <div className="text-center">
@@ -338,38 +387,12 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                         <h2 className="text-6xl md:text-7xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 to-green-400 drop-shadow-lg animate-pulse">
                             BINGO!
                         </h2>
-                        
                         <div className="my-6">
                             <h3 className="text-2xl font-bold mb-4">Parabéns ao(s) Vencedor(es)!</h3>
                             {gameState.prizePool > 0 && gameState.winners.length > 0 &&
                               <p className="text-lg text-yellow-300 mb-4">O prêmio de <span className="font-bold">{gameState.prizePool} F</span> foi dividido entre {gameState.winners.length} vencedor(es)!</p>
                             }
-                            <div className="space-y-3 max-w-md mx-auto">
-                                {gameState.winners.map((winner, index) => (
-                                    <div key={index} className="bg-gray-900 bg-opacity-50 p-3 rounded-lg flex justify-between items-center text-lg">
-                                        <span className="font-semibold">{winner.displayName}</span>
-                                        <span className="font-bold text-yellow-400 text-xl">
-                                            + {gameState.winners.length > 0 ? Math.floor(gameState.prizePool / gameState.winners.length) : 0} F
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
                         </div>
-                        
-                        {gameState.winners.length > 0 && (
-                            <div className="mb-6">
-                                <h3 className="text-xl font-semibold mb-2">Cartela(s) Vencedora(s):</h3>
-                                <div className="flex justify-center flex-wrap gap-4 mt-2 p-2">
-                                    {gameState.winners.map((winner, index) => (
-                                        <div key={index} className="flex-shrink-0 w-48 md:w-56">
-                                            <BingoCard cardIndex={-1} numbers={winner.card} drawnNumbers={gameState.drawnNumbers} gameStatus="ended" onBingo={()=>{}} isWinningCard={true} markedNumbers={winner.card.filter(n => gameState.drawnNumbers.includes(n))} onMarkNumber={() => {}} />
-                                            <p className="text-center font-semibold mt-1 text-sm">Cartela de {winner.displayName}</p>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
                         <p className="mt-4 text-lg">
                             Voltando para o lobby em <span className="font-bold text-2xl text-green-400">{endGameCountdown}s</span>...
                         </p>
@@ -377,7 +400,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                 </div>
             )}
             {gameState.status === 'waiting' && gameState.lastWinnerAnnouncement && (
-                 <div className="text-center bg-blue-500 text-white p-2 rounded-lg my-2 text-md font-bold">
+                 <div className="flex-shrink-0 text-center bg-blue-500 text-white p-2 rounded-lg my-2 text-md font-bold">
                     {gameState.lastWinnerAnnouncement}
                 </div>
             )}
@@ -385,7 +408,6 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
             <main className="flex-grow flex gap-4 overflow-hidden">
                 <div className="w-1/4 bg-gray-800 rounded-lg p-4 flex flex-col overflow-y-auto">
                     <BingoMasterBoard drawnNumbers={gameState.drawnNumbers} />
-                    
                      {(gameState.status === 'waiting' || gameState.status === 'running') && (
                         <div className="mt-4">
                             <h2 className="text-xl font-bold text-center mb-2">Ranking de Jogadores ({Object.keys(gameState.players).length})</h2>
@@ -393,49 +415,33 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                                 {sortedPlayers.length > 0 ? (
                                     <ul className="space-y-2">
                                         {sortedPlayers.map(([uid, player]) => (
-                                            <li key={uid} className={`flex justify-between items-center p-2 rounded-md transition-colors duration-300 ${uid === user.uid ? 'bg-purple-800' : 'bg-gray-700'}`}>
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="font-semibold text-white truncate" title={player.displayName}>
-                                                        {player.displayName}
-                                                        {uid === user.uid && <span className="text-yellow-400 font-normal"> (Você)</span>}
-                                                    </p>
-                                                    <p className="text-xs text-gray-400">
-                                                        {typeof player.cardCount === 'number' ? (player.cardCount === 1 ? '1 cartela' : `${player.cardCount} cartelas`) : '?'}
-                                                    </p>
+                                            <li key={uid} className={`flex justify-between items-center p-2 rounded-md transition-colors duration-300 ${uid === user.uid && !isSpectator ? 'bg-purple-800' : 'bg-gray-700'}`}>
+                                                <div className="flex items-center flex-1 min-w-0">
+                                                    <span className={`w-3 h-3 rounded-full mr-2 flex-shrink-0 ${playerStatuses[uid] === 'online' ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                                                    <div className="flex-1 min-w-0">
+                                                      <p className="font-semibold text-white truncate" title={player.displayName}>
+                                                          {player.displayName}
+                                                          {uid === user.uid && !isSpectator && <span className="text-yellow-400 font-normal"> (Você)</span>}
+                                                      </p>
+                                                    </div>
                                                 </div>
-                                                {player.progress !== undefined && typeof player.progress === 'number' && player.progress > 0 && gameState.status === 'running' && (
-                                                    <span className="text-sm bg-blue-500 text-white font-bold py-1 px-2 rounded-full flex-shrink-0 ml-2">
-                                                        Faltam {player.progress}
-                                                    </span>
-                                                )}
                                             </li>
                                         ))}
                                     </ul>
                                 ) : (
-                                    <p className="text-gray-400 text-center italic mt-4">Nenhum jogador comprou cartelas ainda.</p>
+                                    <p className="text-gray-400 text-center italic mt-4">Nenhum jogador no jogo.</p>
                                 )}
                             </div>
                         </div>
                     )}
                 </div>
                 <div className="w-3/4 flex flex-col">
-                    <div className="bg-gray-800 rounded-lg p-4 mb-4 flex justify-between items-center">
-                        <h2 className="text-xl font-bold">Suas Cartelas ({myCards.length})</h2>
+                    <div className="flex-shrink-0 bg-gray-800 rounded-lg p-4 mb-4 flex justify-between items-center">
+                        <h2 className="text-xl font-bold">{isSpectator ? "Cartelas dos Jogadores" : `Suas Cartelas (${myCards.length})`}</h2>
                     </div>
-                    {error && <p className="text-red-400 text-center mb-2">{error}</p>}
-                    <div className="flex-grow overflow-y-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-2">
-                        {myCards.map((cardData, index) => (
-                            <BingoCard 
-                                key={index} 
-                                cardIndex={index}
-                                numbers={cardData.numbers} 
-                                drawnNumbers={gameState.drawnNumbers} 
-                                onBingo={onBingo} 
-                                gameStatus={gameState.status}
-                                markedNumbers={playerMarkedNumbers[index] || []}
-                                onMarkNumber={handleMarkNumber}
-                             />
-                        ))}
+                    {error && !isSpectator && <p className="text-red-400 text-center mb-2">{error}</p>}
+                    <div className="flex-grow overflow-y-auto">
+                       {renderCards()}
                     </div>
                 </div>
             </main>

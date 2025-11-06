@@ -7,28 +7,32 @@ Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real cons
 ### Para Jogadores
 - **Autenticação Segura:** Sistema de login e registro com e-mail/senha e login social com Google. Inclui verificação de e-mail.
 - **Lobby do Jogo:** Uma área central onde os jogadores podem ver seu saldo, comprar cartelas e entrar na próxima partida.
+- **Chat em Tempo Real no Lobby:** Converse com outros jogadores no lobby enquanto espera o início do jogo.
 - **Compra de Cartelas:** Os jogadores podem comprar até 50 cartelas por rodada usando fichas virtuais (F).
 - **Bônus Diário:** Possibilidade de resgatar 10 Fichas (F) gratuitas uma vez por dia para continuar jogando.
-- **Jogabilidade em Tempo Real:** Sorteio de números e marcação automática das cartelas, tudo sincronizado em tempo real para todos os jogadores usando Firestore.
-- **Ranking Dinâmico:** Um placar na tela do jogo mostra o progresso dos jogadores, indicando quantos números faltam para cada um ganhar.
+- **Jogabilidade Interativa e Manual:** Marque seus próprios números na cartela. Um destaque especial aparece após 3 segundos para ajudar a encontrar números perdidos. Grite "BINGO!" com o botão individual de cada cartela.
+- **Ranking Dinâmico:** Um placar na tela do jogo mostra o progresso dos jogadores em tempo real.
+- **Status de Conexão do Jogador:** Veja quem está online ou offline através de um indicador de status (verde/vermelho) no ranking.
+- **Modo Espectador:** Entre no jogo como espectador para assistir à partida em tempo real, visualizando as cartelas de todos os jogadores, sem participar ativamente.
 - **Gerenciamento de Perfil:** Os jogadores podem atualizar seu nome de usuário e alterar sua senha.
+- **Recuperação de Erros:** Em caso de uma falha de conexão crítica, um botão "Reiniciar Sessão" permite que você volte facilmente para a tela de login.
 
 ### Para Administradores
 - **Painel de Administração:** Uma interface exclusiva para o administrador monitorar e controlar o jogo.
-- **Monitoramento em Tempo Real:** Visualize o status do jogo (esperando, em andamento, pausado), o número de jogadores, a quantidade de bolas sorteadas e o prêmio acumulado.
+- **Monitoramento em Tempo Real:** Visualize o status do jogo, o número de jogadores, a quantidade de bolas sorteadas e o prêmio acumulado.
 - **Controles Manuais do Jogo:**
   - **Forçar Início:** Inicie a partida manualmente a qualquer momento.
   - **Pausar/Retomar:** Pause o jogo, informando um motivo que será exibido para todos os jogadores, e retome quando desejar.
-  - **Resetar Jogo:** Reinicie a rodada (só é permitido se nenhuma cartela tiver sido vendida).
-- **Configurações de Tempo:** Ajuste a duração do intervalo entre os sorteios e o tempo de exibição da tela de vencedores.
+  - **Resetar Jogo:** Reinicie a rodada, limpando o estado atual do jogo.
+- **Configurações de Tempo:** Ajuste a duração dos contadores de tempo do lobby, sorteio e tela de vencedores.
 
 ---
 
 ## 🗺️ Mapa do Jogo (Estrutura da Aplicação)
 
 1.  **Tela de Autenticação:** A porta de entrada do jogo. Os usuários podem escolher entre `Entrar` em uma conta existente ou `Registrar` uma nova.
-2.  **Lobby do Jogo:** Após o login, os jogadores chegam aqui. É a área de espera onde podem se preparar para a próxima rodada, comprando cartelas e gerenciando seu perfil.
-3.  **Tela do Jogo:** Onde a ação acontece. Esta tela exibe o painel com os números sorteados, as cartelas do jogador e o ranking de progresso dos outros participantes.
+2.  **Lobby do Jogo:** Após o login, os jogadores chegam aqui. É a área de espera onde podem conversar no chat, se preparar para a próxima rodada, comprar cartelas e gerenciar seu perfil.
+3.  **Tela do Jogo:** Onde a ação acontece. Esta tela exibe o painel com os números sorteados, as cartelas do jogador (ou de todos, em modo espectador) e o ranking dos participantes.
 4.  **Painel de Administração:** Acessível apenas pelo administrador a partir do lobby, este painel é o centro de controle do jogo.
 
 ---
@@ -40,11 +44,11 @@ O objetivo é ser o primeiro jogador a completar uma linha em qualquer uma de su
 
 ### Como Jogar
 1.  **Crie uma Conta e Faça Login:** Use seu e-mail ou conta Google para acessar o jogo. Novos jogadores recebem um bônus de 100 Fichas (F).
-2.  **Acesse o Lobby:** Após o login, você estará no lobby. Aqui você pode ver seu saldo de fichas.
+2.  **Acesse o Lobby:** Após o login, você estará no lobby. Aqui você pode conversar com outros jogadores e ver seu saldo de fichas.
 3.  **Compre Suas Cartelas:** Antes de a partida começar, clique no botão "Comprar Cartela (10 F)". Cada cartela custa 10 Fichas. Você pode comprar até 50 cartelas por rodada.
-4.  **Aguarde o Início:** O jogo não começa automaticamente. O administrador iniciará a partida manualmente quando houver jogadores suficientes. A exigência mínima é de **2 jogadores e 2 cartelas vendidas**.
-5.  **Acompanhe o Sorteio:** Uma vez que o jogo começa, os números (de 1 a 60) são sorteados um a um. O sistema marca automaticamente os números sorteados em todas as suas cartelas.
-6.  **BINGO!** O primeiro jogador a completar uma linha (5 números) em qualquer direção ganha. O jogo é pausado, e a tela de vencedores é exibida para todos.
+4.  **Aguarde o Início:** O jogo não começa automaticamente. O administrador iniciará a partida manualmente. A exigência mínima é de **2 jogadores e 2 cartelas vendidas**.
+5.  **Marque os Números:** Quando um número é sorteado, ele **não** será marcado para você. Se o número estiver em sua cartela, você deve **clicar nele para marcá-lo**. Se você não marcar em 3 segundos, uma borda em destaque aparecerá para te ajudar.
+6.  **Grite BINGO!** Quando você completar uma linha (5 números) em qualquer direção, o botão "BINGO!" na sua cartela vencedora ficará ativo. **Você deve clicar neste botão** para declarar sua vitória. O sistema fará uma verificação final para garantir que sua vitória é legítima.
 7.  **Retorno ao Lobby:** Após a exibição dos vencedores, todos os jogadores retornam automaticamente ao lobby para se prepararem para a próxima rodada.
 
 ### Prêmios
@@ -71,6 +75,18 @@ Siga estes passos para configurar e executar o projeto em seu ambiente local.
 4.  Em seguida, vá para a seção **Firestore Database**.
     - Clique em **"Criar banco de dados"**.
     - Inicie no **modo de produção** e escolha uma localização para o servidor.
+    - Vá para a aba **Regras** e atualize-as para permitir leitura e escrita (para desenvolvimento):
+      ```
+      rules_version = '2';
+      service cloud.firestore {
+        match /databases/{database}/documents {
+          match /{document=**} {
+            allow read, write: if true;
+          }
+        }
+      }
+      ```
+      **Aviso:** Estas regras são inseguras para produção. Use regras de segurança adequadas para um aplicativo real.
 5.  Volte para a página principal do seu projeto, clique no ícone de engrenagem e vá para **"Configurações do Projeto"**.
     - Na aba "Geral", desça até a seção "Seus apps".
     - Clique no ícone da web (`</>`) para registrar um novo aplicativo da web.

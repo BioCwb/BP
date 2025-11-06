@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { auth, googleProvider, db } from './firebase/config';
+import { auth, googleProvider, db, serverTimestamp } from './firebase/config';
 // FIX: Removed firebase v9 modular imports as they are not compatible with the project setup, causing "no exported member" errors.
 // The functions are now called using the v8 syntax (e.g., auth.onAuthStateChanged).
 import type firebase from 'firebase/compat/app';
@@ -15,7 +15,7 @@ import { BingoGame } from './components/BingoGame';
 import { AdminPanel } from './components/AdminPanel';
 
 type AuthMode = 'login' | 'register';
-type ViewMode = 'auth' | 'lobby' | 'game' | 'profile' | 'admin';
+type ViewMode = 'auth' | 'lobby' | 'game' | 'profile' | 'admin' | 'spectator';
 
 export interface UserData {
   displayName: string;
@@ -109,9 +109,27 @@ export default function App() {
   }, []);
   
   const handleLogout = async () => {
+    if (auth.currentUser) {
+      await db.collection('player_status').doc(auth.currentUser.uid).delete().catch(err => console.error("Failed to clear player status on logout:", err));
+    }
     // FIX: Switched from v9 signOut(auth) to v8 auth.signOut()
     await auth.signOut();
   };
+
+  // Player Presence Heartbeat
+  useEffect(() => {
+    if (!currentUser) return;
+
+    // Set initial online status
+    const statusRef = db.collection('player_status').doc(currentUser.uid);
+    statusRef.set({ lastSeen: serverTimestamp() });
+
+    const heartbeat = setInterval(() => {
+        statusRef.set({ lastSeen: serverTimestamp() });
+    }, 15000); // Update every 15 seconds
+
+    return () => clearInterval(heartbeat);
+  }, [currentUser]);
   
   useEffect(() => {
     if (currentUser?.uid) {
@@ -309,9 +327,11 @@ export default function App() {
     
     switch (viewMode) {
         case 'lobby':
-            return <GameLobby user={currentUser!} userData={userData!} onPlay={() => setViewMode('game')} onManageProfile={() => setViewMode('profile')} onLogout={handleLogout} onGoToAdmin={() => setViewMode('admin')} />;
+            return <GameLobby user={currentUser!} userData={userData!} onPlay={() => setViewMode('game')} onSpectate={() => setViewMode('spectator')} onManageProfile={() => setViewMode('profile')} onLogout={handleLogout} onGoToAdmin={() => setViewMode('admin')} />;
         case 'game':
-            return <BingoGame user={currentUser!} userData={userData!} onBackToLobby={() => setViewMode('lobby')} />;
+            return <BingoGame user={currentUser!} userData={userData!} onBackToLobby={() => setViewMode('lobby')} onSessionReset={handleLogout} />;
+        case 'spectator':
+            return <BingoGame user={currentUser!} userData={userData!} onBackToLobby={() => setViewMode('lobby')} onSessionReset={handleLogout} isSpectator={true} />;
         case 'profile':
             return <ProfileManagement user={currentUser!} onBack={() => setViewMode('lobby')} />;
         case 'admin':
@@ -325,7 +345,7 @@ export default function App() {
     }
   }
 
-  const appContainerClasses = `min-h-screen w-full bg-gradient-to-br from-gray-900 via-purple-900 to-blue-900 text-white flex flex-col items-center ${viewMode === 'game' ? '' : 'justify-center p-4'}`;
+  const appContainerClasses = `min-h-screen w-full bg-gradient-to-br from-gray-900 via-purple-900 to-blue-900 text-white flex flex-col items-center ${viewMode === 'game' || viewMode === 'spectator' ? '' : 'justify-center p-4'}`;
 
   return (
     <div className={appContainerClasses}>
