@@ -1,14 +1,20 @@
 import React from 'react';
 import { type UserData } from '../App';
+import type firebase from 'firebase/compat/app';
 
 interface GameLobbyProps {
+  user: firebase.User;
   userData: UserData;
   onPlay: () => void;
   onManageProfile: () => void;
   onLogout: () => void;
+  onGoToAdmin: () => void;
 }
 
-export const GameLobby: React.FC<GameLobbyProps> = ({ userData, onPlay, onManageProfile, onLogout }) => {
+// TODO: Substitua pelo UID do seu usuário administrador do Firebase Authentication.
+const ADMIN_UID = 'fKlSv57pZeSGPGiQG2z4NKAD9qi2';
+
+export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, onManageProfile, onLogout, onGoToAdmin }) => {
 
   const handleComingSoon = () => {
     alert('Esta funcionalidade chegará em breve!');
@@ -46,6 +52,16 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ userData, onPlay, onManage
              >
                 Gerenciar Perfil
             </button>
+            
+            {user.uid === ADMIN_UID && (
+              <button
+                onClick={onGoToAdmin}
+                className="w-full py-3 px-4 bg-yellow-600 hover:bg-yellow-700 rounded-lg text-black font-semibold transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-opacity-50"
+              >
+                Painel do Admin
+              </button>
+            )}
+
             <button
                 onClick={onLogout}
                 className="w-full py-3 px-4 bg-red-600 hover:bg-red-700 rounded-lg text-white font-semibold transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50"

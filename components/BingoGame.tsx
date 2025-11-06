@@ -37,7 +37,7 @@ const generateBingoCard = (): number[] => {
     return card.flat();
 };
 
-interface GameState {
+export interface GameState {
     status: 'waiting' | 'running' | 'ended';
     drawnNumbers: number[];
     players: { [uid: string]: { displayName: string; cardCount: number; progress?: number; } };
@@ -46,6 +46,10 @@ interface GameState {
     host: string | null;
     countdown: number;
     lastWinnerAnnouncement: string;
+    // New fields for admin control
+    lobbyCountdownDuration: number;
+    drawIntervalDuration: number;
+    endGameDelayDuration: number;
 }
 
 interface BingoCardData {
@@ -87,7 +91,17 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                         const gameDoc = await transaction.get(gameDocRef);
                         if (!gameDoc.exists) {
                             const newGameState: GameState = {
-                                status: 'waiting', drawnNumbers: [], players: {}, prizePool: 0, winners: [], host: user.uid, countdown: 15, lastWinnerAnnouncement: ""
+                                status: 'waiting', 
+                                drawnNumbers: [], 
+                                players: {}, 
+                                prizePool: 0, 
+                                winners: [], 
+                                host: user.uid, 
+                                countdown: 30, // Default lobby time
+                                lastWinnerAnnouncement: "",
+                                lobbyCountdownDuration: 30,
+                                drawIntervalDuration: 8,
+                                endGameDelayDuration: 15
                             };
                             transaction.set(gameDocRef, newGameState);
                         }
@@ -119,13 +133,14 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
     // Countdown timer for the end-of-game screen
     useEffect(() => {
         if (gameState?.status === 'ended') {
-            setEndGameCountdown(10); // Reset on game end
+            const duration = gameState.endGameDelayDuration || 10;
+            setEndGameCountdown(duration); // Reset on game end
             const timer = setInterval(() => {
                 setEndGameCountdown(prev => (prev > 0 ? prev - 1 : 0));
             }, 1000);
             return () => clearInterval(timer);
         }
-    }, [gameState?.status]);
+    }, [gameState?.status, gameState?.endGameDelayDuration]);
     
     const handleBuyCard = async () => {
         setError(null);
@@ -187,9 +202,10 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                 await db.runTransaction(async (t) => {
                     const gameDoc = await t.get(gameDocRef);
                     if (!gameDoc.exists) return;
-                    const currentCountdown = gameDoc.data()!.countdown;
+                    const data = gameDoc.data() as GameState;
+                    const currentCountdown = data.countdown;
                     if (currentCountdown <= 1) {
-                         t.update(gameDocRef, { status: 'running', countdown: 5 });
+                         t.update(gameDocRef, { status: 'running', countdown: data.drawIntervalDuration || 5 });
                     } else {
                          t.update(gameDocRef, { countdown: currentCountdown - 1 });
                     }
@@ -214,7 +230,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                         do {
                             newNumber = Math.floor(Math.random() * 75) + 1;
                         } while(drawn.includes(newNumber));
-                        t.update(gameDocRef, { drawnNumbers: [...drawn, newNumber], countdown: 5 });
+                        t.update(gameDocRef, { drawnNumbers: [...drawn, newNumber], countdown: data.drawIntervalDuration || 5 });
                     } else {
                         t.update(gameDocRef, { countdown: currentCountdown - 1 });
                     }
@@ -226,16 +242,29 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                 const announcement = winnerNames ? `Último(s) vencedor(es): ${winnerNames}` : "";
 
                 const batch = db.batch();
-                batch.update(gameDocRef, { status: 'waiting', drawnNumbers: [], prizePool: 0, winners: [], countdown: 15, lastWinnerAnnouncement: announcement});
-                
-                const playerIds = Object.keys(gameState.players);
-                playerIds.forEach(playerId => {
-                    const playerCardsRef = db.collection('player_cards').doc(playerId).collection('cards').doc('active_game');
-                    batch.delete(playerCardsRef);
+                batch.update(gameDocRef, { 
+                    status: 'waiting', 
+                    drawnNumbers: [], 
+                    prizePool: 0, 
+                    winners: [], 
+                    countdown: gameState.lobbyCountdownDuration || 15, 
+                    lastWinnerAnnouncement: announcement,
+                    players: {} // Reset players for the new round
                 });
+                
+                // This is a simplified approach. For a production app, clearing player cards should be handled
+                // by a Cloud Function to ensure all subcollections are deleted reliably.
+                const playerIds = Object.keys(gameState.players);
+                for (const playerId of playerIds) {
+                    const playerCardsRef = db.collection('player_cards').doc(playerId).collection('cards').doc('active_game');
+                    const doc = await playerCardsRef.get();
+                    if(doc.exists) {
+                       batch.delete(playerCardsRef);
+                    }
+                }
                 await batch.commit();
 
-            }, 10000); // 10 second delay before new round
+            }, (gameState.endGameDelayDuration || 10) * 1000); 
         }
         
         return () => {
@@ -258,6 +287,9 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
             winners: allWinners
         });
         
+        // In a multi-winner scenario, prize distribution should happen once at the end.
+        // This logic is now simplified and the final distribution happens in the host's end-game logic.
+        // For now, we assume a single winner ends the game.
         for(const winner of allWinners) {
             const userDocRef = db.collection("users").doc(winner.uid);
             batch.update(userDocRef, { fichas: increment(prizePerWinner) });
@@ -326,7 +358,9 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                             <span className="font-bold text-6xl text-green-400 drop-shadow-lg">{getBingoLetter(lastDrawnNumber)}-{lastDrawnNumber}</span>
                         </div>
                     )}
-                    <p className="text-sm mt-2">Próxima bola em: <span className="font-bold text-xl">{gameState.countdown}s</span></p>
+                     {gameState.status !== 'ended' && (
+                        <p className="text-sm mt-2">{gameState.status === 'running' ? 'Próxima bola em' : 'O jogo começa em'}: <span className="font-bold text-xl">{gameState.countdown}s</span></p>
+                     )}
                 </div>
                 <button onClick={onBackToLobby} className="py-2 px-4 bg-red-600 hover:bg-red-700 rounded-lg font-semibold self-start">&larr; Voltar para o Lobby</button>
             </header>
@@ -340,6 +374,9 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                         
                         <div className="my-6">
                             <h3 className="text-2xl font-bold mb-4">Parabéns ao(s) Vencedor(es)!</h3>
+                            {gameState.prizePool > 0 && gameState.winners.length > 0 &&
+                              <p className="text-lg text-yellow-300 mb-4">O prêmio de <span className="font-bold">{gameState.prizePool} F</span> foi dividido entre {gameState.winners.length} vencedor(es)!</p>
+                            }
                             <div className="space-y-3 max-w-md mx-auto">
                                 {gameState.winners.map((winner, index) => (
                                     <div key={index} className="bg-gray-900 bg-opacity-50 p-3 rounded-lg flex justify-between items-center text-lg">

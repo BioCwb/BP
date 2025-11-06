@@ -1,0 +1,146 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { db } from '../firebase/config';
+import type { GameState } from './BingoGame';
+
+interface AdminPanelProps {
+    onBack: () => void;
+}
+
+export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
+    const [gameState, setGameState] = useState<GameState | null>(null);
+    const [lobbyTime, setLobbyTime] = useState(30);
+    const [drawTime, setDrawTime] = useState(8);
+    const [endTime, setEndTime] = useState(15);
+    const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+
+    const gameDocRef = useMemo(() => db.collection('games').doc('active_game'), []);
+
+    useEffect(() => {
+        const unsubscribe = gameDocRef.onSnapshot((doc) => {
+            if (doc.exists) {
+                const data = doc.data() as GameState;
+                setGameState(data);
+                setLobbyTime(data.lobbyCountdownDuration || 30);
+                setDrawTime(data.drawIntervalDuration || 8);
+                setEndTime(data.endGameDelayDuration || 15);
+            } else {
+                setGameState(null);
+            }
+        });
+        return () => unsubscribe();
+    }, [gameDocRef]);
+    
+    const showMessage = (type: 'success' | 'error', text: string) => {
+        setMessage({ type, text });
+        setTimeout(() => setMessage(null), 3000);
+    };
+
+    const handleSaveSettings = async () => {
+        try {
+            await gameDocRef.update({
+                lobbyCountdownDuration: Number(lobbyTime),
+                drawIntervalDuration: Number(drawTime),
+                endGameDelayDuration: Number(endTime),
+            });
+            showMessage('success', 'Configurações salvas com sucesso!');
+        } catch (error) {
+            console.error("Failed to save settings:", error);
+            showMessage('error', 'Falha ao salvar configurações.');
+        }
+    };
+
+    const handleForceStart = async () => {
+        if (gameState?.status === 'waiting') {
+            try {
+                await gameDocRef.update({ status: 'running', countdown: gameState.drawIntervalDuration || 5 });
+                showMessage('success', 'Jogo iniciado forçadamente!');
+            } catch (error) {
+                showMessage('error', 'Falha ao iniciar o jogo.');
+            }
+        }
+    };
+    
+    const handleResetGame = async () => {
+        if (window.confirm('Tem certeza que deseja resetar o jogo? Isso limpará todos os jogadores e cartelas.')) {
+             try {
+                const announcement = gameState?.winners.length ? `Último(s) vencedor(es): ${gameState.winners.map(w => w.displayName).join(', ')}` : "Jogo resetado pelo administrador.";
+
+                const batch = db.batch();
+                batch.update(gameDocRef, { 
+                    status: 'waiting', 
+                    drawnNumbers: [], 
+                    prizePool: 0, 
+                    winners: [], 
+                    countdown: gameState?.lobbyCountdownDuration || 15,
+                    lastWinnerAnnouncement: announcement,
+                    players: {}
+                });
+                
+                // Note: This reset does not clear player cards from subcollections for safety.
+                // A more robust solution would use a Cloud Function to handle cascading deletes.
+                
+                await batch.commit();
+                showMessage('success', 'Jogo resetado com sucesso!');
+            } catch (error) {
+                showMessage('error', 'Falha ao resetar o jogo.');
+                console.error(error);
+            }
+        }
+    };
+
+    return (
+        <div className="w-full max-w-2xl bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl p-8 text-white">
+            <div className="flex items-center justify-between mb-6">
+                <h2 className="text-3xl font-bold">Painel de Administração</h2>
+                <button onClick={onBack} className="text-gray-300 hover:text-white transition-colors">&larr; Voltar para o Lobby</button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 text-center">
+                <div className="bg-gray-700 p-4 rounded-lg">
+                    <p className="text-sm text-gray-400">Status do Jogo</p>
+                    <p className="text-2xl font-bold capitalize">{gameState?.status || 'N/A'}</p>
+                </div>
+                <div className="bg-gray-700 p-4 rounded-lg">
+                    <p className="text-sm text-gray-400">Jogadores no Lobby</p>
+                    <p className="text-2xl font-bold">{gameState ? Object.keys(gameState.players).length : 0}</p>
+                </div>
+                <div className="bg-gray-700 p-4 rounded-lg">
+                    <p className="text-sm text-gray-400">Prêmio Acumulado</p>
+                    <p className="text-2xl font-bold">{gameState?.prizePool || 0} F</p>
+                </div>
+            </div>
+            
+            <div className="bg-gray-900 p-4 rounded-lg mb-6">
+                 <h3 className="text-xl font-semibold mb-4 text-center">Controles do Jogo</h3>
+                 <div className="flex gap-4">
+                     <button onClick={handleForceStart} disabled={gameState?.status !== 'waiting'} className="flex-1 py-2 px-4 bg-green-600 hover:bg-green-700 rounded-lg font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed">Forçar Início</button>
+                     <button onClick={handleResetGame} className="flex-1 py-2 px-4 bg-red-600 hover:bg-red-700 rounded-lg font-semibold">Resetar Jogo</button>
+                 </div>
+            </div>
+
+            <div className="bg-gray-900 p-4 rounded-lg">
+                <h3 className="text-xl font-semibold mb-4 text-center">Configurações de Tempo (segundos)</h3>
+                <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                        <label htmlFor="lobby-time">Tempo de Espera no Lobby:</label>
+                        <input id="lobby-time" type="number" value={lobbyTime} onChange={e => setLobbyTime(Number(e.target.value))} className="w-24 p-2 bg-gray-700 border border-gray-600 rounded-lg text-center" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <label htmlFor="draw-time">Intervalo entre Sorteios:</label>
+                        <input id="draw-time" type="number" value={drawTime} onChange={e => setDrawTime(Number(e.target.value))} className="w-24 p-2 bg-gray-700 border border-gray-600 rounded-lg text-center" />
+                    </div>
+                    <div className="flex items-center justify-between">
+                        <label htmlFor="end-time">Intervalo Pós-Jogo:</label>
+                        <input id="end-time" type="number" value={endTime} onChange={e => setEndTime(Number(e.target.value))} className="w-24 p-2 bg-gray-700 border border-gray-600 rounded-lg text-center" />
+                    </div>
+                </div>
+                <button onClick={handleSaveSettings} className="mt-6 w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold">Salvar Configurações</button>
+            </div>
+             {message && (
+                <div className={`mt-4 text-center p-3 rounded-lg ${message.type === 'success' ? 'bg-green-500' : 'bg-red-500'}`}>
+                    {message.text}
+                </div>
+            )}
+        </div>
+    );
+};

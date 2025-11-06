@@ -12,9 +12,10 @@ import { GoogleIcon } from './components/icons/GoogleIcon';
 import { ProfileManagement } from './components/ProfileManagement';
 import { GameLobby } from './components/GameLobby';
 import { BingoGame } from './components/BingoGame';
+import { AdminPanel } from './components/AdminPanel';
 
 type AuthMode = 'login' | 'register';
-type ViewMode = 'auth' | 'lobby' | 'game' | 'profile';
+type ViewMode = 'auth' | 'lobby' | 'game' | 'profile' | 'admin';
 
 export interface UserData {
   displayName: string;
@@ -307,11 +308,13 @@ export default function App() {
     
     switch (viewMode) {
         case 'lobby':
-            return <GameLobby userData={userData!} onPlay={() => setViewMode('game')} onManageProfile={() => setViewMode('profile')} onLogout={handleLogout} />;
+            return <GameLobby user={currentUser!} userData={userData!} onPlay={() => setViewMode('game')} onManageProfile={() => setViewMode('profile')} onLogout={handleLogout} onGoToAdmin={() => setViewMode('admin')} />;
         case 'game':
             return <BingoGame user={currentUser!} userData={userData!} onBackToLobby={() => setViewMode('lobby')} />;
         case 'profile':
             return <ProfileManagement user={currentUser!} onBack={() => setViewMode('lobby')} />;
+        case 'admin':
+            return <AdminPanel onBack={() => setViewMode('lobby')} />;
         case 'auth':
             if (needsVerification) return renderVerificationView();
             if (showVerificationMessage) return renderPostRegistrationView();
