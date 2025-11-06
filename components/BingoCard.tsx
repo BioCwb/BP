@@ -5,7 +5,7 @@ interface BingoCardProps {
     numbers: number[];
     drawnNumbers: number[];
     onBingo: (winningCard: number[]) => void;
-    gameStatus: 'waiting' | 'running' | 'ended';
+    gameStatus: 'waiting' | 'running' | 'ended' | 'paused';
     isWinningCard?: boolean;
 }
 

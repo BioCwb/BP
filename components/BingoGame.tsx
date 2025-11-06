@@ -38,7 +38,7 @@ const generateBingoCard = (): number[] => {
 };
 
 export interface GameState {
-    status: 'waiting' | 'running' | 'ended';
+    status: 'waiting' | 'running' | 'ended' | 'paused';
     drawnNumbers: number[];
     players: { [uid: string]: { displayName: string; cardCount: number; progress?: number; } };
     prizePool: number;
@@ -46,6 +46,7 @@ export interface GameState {
     host: string | null;
     countdown: number;
     lastWinnerAnnouncement: string;
+    pauseReason?: string;
     // New fields for admin control
     lobbyCountdownDuration: number;
     drawIntervalDuration: number;
@@ -192,7 +193,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
     
     // Game loop logic - only runs for the host
     useEffect(() => {
-        if (!gameState || gameState.host !== user.uid) return;
+        if (!gameState || gameState.host !== user.uid || gameState.status === 'paused') return;
 
         let intervalId: number | undefined;
         let timeoutId: number | undefined;
@@ -343,7 +344,15 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
     const lastDrawnNumber = gameState.drawnNumbers[gameState.drawnNumbers.length - 1] || null;
 
     return (
-        <div className="w-full max-w-7xl mx-auto p-4 flex flex-col flex-grow">
+        <div className="w-full max-w-7xl mx-auto p-4 flex flex-col flex-grow relative">
+             {gameState.status === 'paused' && (
+                <div className="absolute inset-0 bg-black bg-opacity-80 flex flex-col items-center justify-center z-40 text-center p-4 rounded-lg">
+                    <h2 className="text-5xl font-bold text-yellow-400 animate-pulse mb-4">JOGO PAUSADO</h2>
+                    {gameState.pauseReason && (
+                        <p className="text-xl text-white">Motivo: {gameState.pauseReason}</p>
+                    )}
+                </div>
+            )}
             <header className="flex justify-between items-center bg-gray-900 bg-opacity-70 p-4 rounded-lg mb-4">
                 <div>
                     <h1 className="text-3xl font-bold text-purple-400">NOITE DO BINGO</h1>
@@ -358,7 +367,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                             <span className="font-bold text-6xl text-green-400 drop-shadow-lg">{getBingoLetter(lastDrawnNumber)}-{lastDrawnNumber}</span>
                         </div>
                     )}
-                     {gameState.status !== 'ended' && (
+                     {gameState.status !== 'ended' && gameState.status !== 'paused' && (
                         <p className="text-sm mt-2">{gameState.status === 'running' ? 'Próxima bola em' : 'O jogo começa em'}: <span className="font-bold text-xl">{gameState.countdown}s</span></p>
                      )}
                 </div>

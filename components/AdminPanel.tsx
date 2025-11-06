@@ -73,7 +73,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
                     winners: [], 
                     countdown: gameState?.lobbyCountdownDuration || 15,
                     lastWinnerAnnouncement: announcement,
-                    players: {}
+                    players: {},
+                    pauseReason: ''
                 });
                 
                 // Note: This reset does not clear player cards from subcollections for safety.
@@ -88,6 +89,33 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
         }
     };
 
+    const handleTogglePause = async () => {
+        if (!gameState) return;
+
+        if (gameState.status === 'running') {
+            const reason = window.prompt('Por favor, informe o motivo da pausa:', 'Pausa técnica');
+            if (reason) {
+                try {
+                    await gameDocRef.update({ status: 'paused', pauseReason: reason });
+                    showMessage('success', 'Jogo pausado com sucesso.');
+                } catch (error) {
+                    showMessage('error', 'Falha ao pausar o jogo.');
+                }
+            }
+        } else if (gameState.status === 'paused') {
+            try {
+                await gameDocRef.update({ 
+                    status: 'running', 
+                    pauseReason: '', 
+                    countdown: gameState.drawIntervalDuration || 5 
+                });
+                showMessage('success', 'Jogo retomado com sucesso.');
+            } catch (error) {
+                showMessage('error', 'Falha ao retomar o jogo.');
+            }
+        }
+    };
+
     return (
         <div className="w-full max-w-2xl bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl p-8 text-white">
             <div className="flex items-center justify-between mb-6">
@@ -95,10 +123,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
                 <button onClick={onBack} className="text-gray-300 hover:text-white transition-colors">&larr; Voltar para o Lobby</button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6 text-center">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 text-center">
                 <div className="bg-gray-700 p-4 rounded-lg">
                     <p className="text-sm text-gray-400">Status do Jogo</p>
                     <p className="text-2xl font-bold capitalize">{gameState?.status || 'N/A'}</p>
+                </div>
+                 <div className="bg-gray-700 p-4 rounded-lg">
+                    <p className="text-sm text-gray-400">Bolas Sorteadas</p>
+                    <p className="text-2xl font-bold">{gameState?.drawnNumbers.length || 0} / 75</p>
                 </div>
                 <div className="bg-gray-700 p-4 rounded-lg">
                     <p className="text-sm text-gray-400">Jogadores no Lobby</p>
@@ -112,8 +144,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
             
             <div className="bg-gray-900 p-4 rounded-lg mb-6">
                  <h3 className="text-xl font-semibold mb-4 text-center">Controles do Jogo</h3>
-                 <div className="flex gap-4">
+                 <div className="flex gap-4 justify-center">
                      <button onClick={handleForceStart} disabled={gameState?.status !== 'waiting'} className="flex-1 py-2 px-4 bg-green-600 hover:bg-green-700 rounded-lg font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed">Forçar Início</button>
+                     
+                      {(gameState?.status === 'running' || gameState?.status === 'paused') && (
+                        <button 
+                            onClick={handleTogglePause}
+                            className={`flex-1 py-2 px-4 rounded-lg font-semibold transition-colors ${
+                                gameState.status === 'running'
+                                ? 'bg-yellow-500 hover:bg-yellow-600 text-black'
+                                : 'bg-blue-500 hover:bg-blue-600 text-white'
+                            }`}
+                        >
+                            {gameState.status === 'running' ? 'Pausar Jogo' : 'Retomar Jogo'}
+                        </button>
+                     )}
+
                      <button onClick={handleResetGame} className="flex-1 py-2 px-4 bg-red-600 hover:bg-red-700 rounded-lg font-semibold">Resetar Jogo</button>
                  </div>
             </div>
