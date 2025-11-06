@@ -134,7 +134,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
                 </div>
                  <div className="bg-gray-700 p-4 rounded-lg">
                     <p className="text-sm text-gray-400">Bolas Sorteadas</p>
-                    <p className="text-2xl font-bold">{gameState?.drawnNumbers.length || 0} / 75</p>
+                    <p className="text-2xl font-bold">{gameState?.drawnNumbers.length || 0} / 60</p>
                 </div>
                 <div className="bg-gray-700 p-4 rounded-lg">
                     <p className="text-sm text-gray-400">Jogadores no Lobby</p>

@@ -35,11 +35,11 @@ interface BingoGameProps {
 }
 
 const getBingoLetter = (num: number) => {
-    if (num <= 15) return 'B';
-    if (num <= 30) return 'I';
-    if (num <= 45) return 'N';
-    if (num <= 60) return 'G';
-    if (num <= 75) return 'O';
+    if (num <= 12) return 'B';
+    if (num <= 24) return 'I';
+    if (num <= 36) return 'N';
+    if (num <= 48) return 'G';
+    if (num <= 60) return 'O';
     return '';
 };
 
@@ -141,13 +141,13 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                     const currentCountdown = data.countdown;
                     if (currentCountdown <= 1) {
                         const drawn = data.drawnNumbers;
-                        if (drawn.length >= 75) {
+                        if (drawn.length >= 60) {
                              t.update(gameDocRef, { status: 'ended' });
                              return;
                         }
                         let newNumber;
                         do {
-                            newNumber = Math.floor(Math.random() * 75) + 1;
+                            newNumber = Math.floor(Math.random() * 60) + 1;
                         } while(drawn.includes(newNumber));
                         t.update(gameDocRef, { drawnNumbers: [...drawn, newNumber], countdown: data.drawIntervalDuration || 5 });
                     } else {

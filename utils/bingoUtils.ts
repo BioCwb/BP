@@ -2,23 +2,33 @@
 export const generateBingoCard = (): number[] => {
     const card: number[][] = Array(5).fill(null).map(() => Array(5).fill(0));
     const ranges = [
-        { col: 0, min: 1, max: 15 },
-        { col: 1, min: 16, max: 30 },
-        { col: 2, min: 31, max: 45 },
-        { col: 3, min: 46, max: 60 },
-        { col: 4, min: 61, max: 75 },
+        { col: 0, min: 1, max: 12 },
+        { col: 1, min: 13, max: 24 },
+        { col: 2, min: 25, max: 36 },
+        { col: 3, min: 37, max: 48 },
+        { col: 4, min: 49, max: 60 },
     ];
     
     for (const range of ranges) {
         const columnNumbers = new Set<number>();
-        while (columnNumbers.size < 5) {
+        // The center column 'N' only needs 4 numbers because of the free space.
+        const numbersToGenerate = range.col === 2 ? 4 : 5;
+        while (columnNumbers.size < numbersToGenerate) {
             const num = Math.floor(Math.random() * (range.max - range.min + 1)) + range.min;
             columnNumbers.add(num);
         }
-        const nums = Array.from(columnNumbers);
+        
+        let nums = Array.from(columnNumbers);
+
         for (let row = 0; row < 5; row++) {
-            if (range.col === 2 && row === 2) { // Free space
-                card[row][range.col] = 0;
+            if (range.col === 2) { // Column 'N'
+                if (row === 2) {
+                    card[row][range.col] = 0; // Free space
+                } else if (row < 2) {
+                    card[row][range.col] = nums[row];
+                } else { // row > 2
+                    card[row][range.col] = nums[row - 1];
+                }
             } else {
                 card[row][range.col] = nums[row];
             }
