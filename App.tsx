@@ -322,8 +322,10 @@ export default function App() {
     }
   }
 
+  const appContainerClasses = `min-h-screen w-full bg-gradient-to-br from-gray-900 via-purple-900 to-blue-900 text-white flex flex-col items-center ${viewMode === 'game' ? '' : 'justify-center p-4'}`;
+
   return (
-    <div className="min-h-screen w-full bg-gradient-to-br from-gray-900 via-purple-900 to-blue-900 text-white flex flex-col items-center justify-center p-4">
+    <div className={appContainerClasses}>
         {viewMode === 'auth' && !showVerificationMessage && !needsVerification && (
             <div className="text-center mb-8">
                 <h1 className="text-5xl font-bold tracking-tight text-white sm:text-6xl">BINGO NIGHT</h1>

@@ -87,6 +87,9 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                             };
                             transaction.set(gameDocRef, newGameState);
                         }
+                    }).catch((err) => {
+                        console.error("Game creation transaction failed:", err);
+                        setError("Could not create a new game. Please check your connection and try again.");
                     });
                 }
             }
@@ -284,7 +287,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
     }, [gameState.players]);
 
     return (
-        <div className="w-full max-w-7xl mx-auto p-4 flex flex-col h-screen">
+        <div className="w-full max-w-7xl mx-auto p-4 flex flex-col flex-grow">
             <header className="flex justify-between items-center bg-gray-900 bg-opacity-70 p-4 rounded-lg mb-4">
                 <div>
                     <h1 className="text-3xl font-bold text-purple-400">BINGO NIGHT</h1>
