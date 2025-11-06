@@ -5,8 +5,6 @@ import type firebase from 'firebase/compat/app';
 import { InputField } from './InputField';
 import { UserIcon } from './icons/UserIcon';
 import { LockIcon } from './icons/LockIcon';
-import { useLanguage } from '../context/LanguageContext';
-import { LanguageSelector } from './LanguageSelector';
 
 interface ProfileManagementProps {
   user: firebase.User;
@@ -23,7 +21,6 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, onBa
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
-  const { t } = useLanguage();
 
   const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,7 +28,7 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, onBa
     setSuccess(null);
 
     if (displayName === user.displayName) {
-        setError(t('error.usernameNotChanged'));
+        setError('Você não alterou seu nome de usuário.');
         return;
     }
     
@@ -40,9 +37,9 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, onBa
     try {
       // FIX: Switched from v9 updateProfile(user, ...) to v8 user.updateProfile(...)
       await auth.currentUser.updateProfile({ displayName });
-      setSuccess(t('profile.updateSuccess'));
+      setSuccess('Perfil atualizado com sucesso!');
     } catch (err) {
-      setError(t('error.profileUpdateFailed'));
+      setError('Falha ao atualizar o perfil. Por favor, tente novamente.');
     }
   };
   
@@ -52,15 +49,15 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, onBa
     setPasswordSuccess(null);
 
     if (!currentPassword || !newPassword || !confirmNewPassword) {
-      setPasswordError(t('error.fillAllPasswordFields'));
+      setPasswordError('Por favor, preencha todos os campos de senha.');
       return;
     }
     if (newPassword !== confirmNewPassword) {
-      setPasswordError(t('error.newPasswordsDoNotMatch'));
+      setPasswordError('As novas senhas não coincidem.');
       return;
     }
     if (!auth.currentUser || !auth.currentUser.email) {
-      setPasswordError(t('error.noUserFound'));
+      setPasswordError('Não foi possível encontrar informações do usuário.');
       return;
     }
 
@@ -71,18 +68,18 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, onBa
       // FIX: Switched from v9 updatePassword(user, ...) to v8 user.updatePassword(...)
       await auth.currentUser.updatePassword(newPassword);
 
-      setPasswordSuccess(t('profile.passwordChangeSuccess'));
+      setPasswordSuccess('Senha alterada com sucesso!');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmNewPassword('');
     } catch (err: any) {
       if (err.code === 'auth/wrong-password') {
-        setPasswordError(t('error.incorrectPassword'));
+        setPasswordError('Senha atual incorreta.');
       } else if (err.code === 'auth/weak-password') {
-         setPasswordError(t('error.weakPassword'));
+         setPasswordError('A senha deve ter pelo menos 6 caracteres.');
       }
       else {
-        setPasswordError(t('error.passwordChangeFailed'));
+        setPasswordError('Falha ao alterar a senha. Por favor, tente novamente.');
         console.error(err);
       }
     }
@@ -93,30 +90,25 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, onBa
   return (
     <div className="w-full max-w-md bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl p-8">
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-3xl font-bold text-white">{t('profile.manageProfile')}</h2>
-        <button onClick={onBack} className="text-gray-300 hover:text-white transition-colors">&larr; {t('profile.backToLobby')}</button>
-      </div>
-
-      <div className="space-y-4 border-b border-gray-700 pb-6 mb-6">
-        <h3 className="text-xl font-semibold text-white text-center">{t('profile.language')}</h3>
-        <LanguageSelector />
+        <h2 className="text-3xl font-bold text-white">Gerenciar Perfil</h2>
+        <button onClick={onBack} className="text-gray-300 hover:text-white transition-colors">&larr; Voltar para o Lobby</button>
       </div>
 
       <form onSubmit={handleProfileUpdate} className="space-y-4 border-b border-gray-700 pb-6 mb-6">
         <InputField
           id="display-name"
-          label="auth.username"
+          label="Nome de usuário"
           type="text"
           value={displayName}
           onChange={(e) => setDisplayName(e.target.value)}
-          placeholder="auth.usernamePlaceholder"
+          placeholder="Escolha um nome de usuário"
           icon={<UserIcon className="w-5 h-5 text-gray-400" />}
         />
         <button
           type="submit"
           className="w-full py-2.5 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-semibold transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50"
         >
-          {t('profile.saveUsername')}
+          Salvar Nome de Usuário
         </button>
         {error && <p className="text-center text-red-400">{error}</p>}
         {success && <p className="text-center text-green-400">{success}</p>}
@@ -124,46 +116,46 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, onBa
       
       {isEmailProvider ? (
         <form onSubmit={handlePasswordChange} className="space-y-4">
-          <h3 className="text-xl font-semibold text-white text-center">{t('profile.changePassword')}</h3>
+          <h3 className="text-xl font-semibold text-white text-center">Mudar Senha</h3>
            <InputField
             id="current-password"
-            label="profile.currentPassword"
+            label="Senha Atual"
             type="password"
             value={currentPassword}
             onChange={(e) => setCurrentPassword(e.target.value)}
-            placeholder="profile.currentPasswordPlaceholder"
+            placeholder="Digite sua senha atual"
             icon={<LockIcon className="w-5 h-5 text-gray-400" />}
           />
            <InputField
             id="new-password"
-            label="profile.newPassword"
+            label="Nova Senha"
             type="password"
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
-            placeholder="profile.newPasswordPlaceholder"
+            placeholder="Digite sua nova senha"
             icon={<LockIcon className="w-5 h-5 text-gray-400" />}
           />
            <InputField
             id="confirm-new-password"
-            label="profile.confirmNewPassword"
+            label="Confirmar Nova Senha"
             type="password"
             value={confirmNewPassword}
             onChange={(e) => setConfirmNewPassword(e.target.value)}
-            placeholder="profile.confirmNewPasswordPlaceholder"
+            placeholder="Confirme sua nova senha"
             icon={<LockIcon className="w-5 h-5 text-gray-400" />}
           />
           <button
             type="submit"
             className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-semibold transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50"
           >
-            {t('profile.updatePassword')}
+            Atualizar Senha
           </button>
            {passwordError && <p className="text-center text-red-400">{passwordError}</p>}
           {passwordSuccess && <p className="text-center text-green-400">{passwordSuccess}</p>}
         </form>
       ) : (
         <div className="text-center text-gray-400">
-            {t('profile.googleAccountMessage')}
+            O gerenciamento de senha não está disponível para contas conectadas com o Google.
         </div>
       )}
     </div>

@@ -1,4 +1,5 @@
-import React, { createContext, useState, useContext, useEffect, useMemo } from 'react';
+import React, { createContext, useState, useContext, useMemo } from 'react';
+import ptTranslations from '../locales/pt-BR.json';
 
 interface LanguageContextType {
   language: string;
@@ -9,36 +10,15 @@ interface LanguageContextType {
 const LanguageContext = createContext<LanguageContextType | undefined>(undefined);
 
 export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const getInitialLanguage = () => {
-    const savedLang = localStorage.getItem('bingo_language');
-    if (savedLang && ['en-US', 'pt-BR'].includes(savedLang)) {
-        return savedLang;
-    }
-    const browserLang = navigator.language || (navigator as any).userLanguage;
-    return browserLang.startsWith('pt') ? 'pt-BR' : 'en-US';
-  };
+  // Default the language to Portuguese and remove the ability to change it.
+  const [language] = useState('pt-BR');
+  const [translations] = useState(ptTranslations);
 
-  const [language, setLanguage] = useState(getInitialLanguage);
-  const [translations, setTranslations] = useState<{ [key: string]: string }>({});
-
-  useEffect(() => {
-    const loadTranslations = async () => {
-      try {
-        const module = await import(`../locales/${language}.json`);
-        setTranslations(module.default);
-      } catch (error) {
-        console.error(`Could not load translations for ${language}`, error);
-        // Fallback to English if translations fail to load
-        const fallbackModule = await import(`../locales/en-US.json`);
-        setTranslations(fallbackModule.default);
-      }
-    };
-    loadTranslations();
-    localStorage.setItem('bingo_language', language);
-  }, [language]);
+  // setLanguage is now a no-op to prevent errors in any component that might still call it.
+  const setLanguage = () => {};
 
   const t = useMemo(() => (key: string, replacements?: { [key: string]: string | number }): string => {
-    let translation = translations[key] || key;
+    let translation = (translations as any)[key] || key;
 
     if (replacements) {
         Object.keys(replacements).forEach((placeholder) => {
