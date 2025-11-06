@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import type firebase from 'firebase/compat/app';
 import { type UserData } from '../App';
@@ -7,6 +6,7 @@ import { db, arrayUnion, increment } from '../firebase/config';
 import { BingoCard } from './BingoCard';
 import { calculateCardProgress } from '../utils/bingoUtils';
 import { BingoMasterBoard } from './BingoMasterBoard';
+import { useLanguage } from '../context/LanguageContext';
 
 
 // Helper function to generate a valid Bingo card as a flat array
@@ -74,6 +74,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
     const [myCards, setMyCards] = useState<BingoCardData[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [endGameCountdown, setEndGameCountdown] = useState(10);
+    const { t } = useLanguage();
 
     const gameDocRef = useMemo(() => db.collection('games').doc('active_game'), []);
     const myCardsCollectionRef = useMemo(() => db.collection('player_cards').doc(user.uid).collection('cards').doc('active_game'), [user.uid]);
@@ -94,13 +95,13 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                         }
                     }).catch((err) => {
                         console.error("Game creation transaction failed:", err);
-                        setError("Could not create a new game. Please check your connection and try again.");
+                        setError(t('error.createGameFailed'));
                     });
                 }
             }
         }, (err) => {
             console.error("Error fetching game state:", err);
-            setError("Failed to connect to the game. Please check your connection and disable ad blockers.");
+            setError(t('error.connectGameFailed'));
         });
 
         const unsubCards = myCardsCollectionRef.onSnapshot((doc) => {
@@ -111,11 +112,11 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
             }
         }, (err) => {
             console.error("Error fetching player cards:", err);
-            setError("Failed to load your cards. Please check your connection and disable ad blockers.");
+            setError(t('error.loadCardsFailed'));
         });
 
         return () => { unsubGame(); unsubCards(); };
-    }, [user, gameDocRef, myCardsCollectionRef]);
+    }, [user, gameDocRef, myCardsCollectionRef, t]);
     
     // Countdown timer for the end-of-game screen
     useEffect(() => {
@@ -130,8 +131,8 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
     
     const handleBuyCard = async () => {
         setError(null);
-        if (myCards.length >= 50) { return setError("You can't have more than 50 cards."); }
-        if (userData.fichas < 10) { return setError("Not enough Fichas (F) to buy a card."); }
+        if (myCards.length >= 50) { return setError(t('error.maxCards')); }
+        if (userData.fichas < 10) { return setError(t('error.notEnoughFichas')); }
 
         try {
             await db.runTransaction(async (transaction) => {
@@ -142,10 +143,10 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                 const playerCardsDoc = await transaction.get(myCardsCollectionRef);
 
                 // --- Step 2: Validation ---
-                if (!userDoc.exists || !gameDoc.exists) throw new Error("User or game data not found. Please try again.");
+                if (!userDoc.exists || !gameDoc.exists) throw new Error(t('error.userOrGameNotFound'));
                 
                 const currentFichas = userDoc.data()!.fichas;
-                if (currentFichas < 10) throw new Error("Not enough Fichas!");
+                if (currentFichas < 10) throw new Error(t('error.notEnoughFichas'));
 
                 // --- Step 3: Logic ---
                 const newCardData: BingoCardData = { numbers: generateBingoCard() };
@@ -223,8 +224,11 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
             }, 1000);
         } else if (gameState.status === 'ended') {
              timeoutId = window.setTimeout(async () => {
+                const winnerNames = gameState.winners.map(w => w.displayName).join(', ');
+                const announcement = winnerNames ? t('game.lastWinner', { winners: winnerNames }) : "";
+
                 const batch = db.batch();
-                batch.update(gameDocRef, { status: 'waiting', drawnNumbers: [], prizePool: 0, winners: [], countdown: 15, lastWinnerAnnouncement: `Last winner(s): ${gameState.winners.map(w => w.displayName).join(', ')}`});
+                batch.update(gameDocRef, { status: 'waiting', drawnNumbers: [], prizePool: 0, winners: [], countdown: 15, lastWinnerAnnouncement: announcement});
                 
                 const playerIds = Object.keys(gameState.players);
                 playerIds.forEach(playerId => {
@@ -241,7 +245,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
             clearTimeout(timeoutId);
         };
 
-    }, [gameState, user.uid, gameDocRef]);
+    }, [gameState, user.uid, gameDocRef, t]);
     
     const onBingo = useCallback(async (winningCard: number[]) => {
         if (!gameState || gameState.status !== 'running' || gameState.winners.some(w => w.uid === user.uid)) return;
@@ -304,7 +308,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
     }, [gameState]);
 
 
-    if (!gameState) return <div className="text-center text-xl">Loading Bingo Game...</div>;
+    if (!gameState) return <div className="text-center text-xl">{t('game.loading')}</div>;
 
     const lastDrawnNumber = gameState.drawnNumbers[gameState.drawnNumbers.length - 1] || null;
 
@@ -312,21 +316,21 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
         <div className="w-full max-w-7xl mx-auto p-4 flex flex-col flex-grow">
             <header className="flex justify-between items-center bg-gray-900 bg-opacity-70 p-4 rounded-lg mb-4">
                 <div>
-                    <h1 className="text-3xl font-bold text-purple-400">BINGO NIGHT</h1>
-                     <p className="text-gray-300">Welcome, {userData.displayName}</p>
-                     <p className="text-yellow-400">Balance: <span className="font-bold">{typeof userData.fichas === 'number' ? userData.fichas : '...'} F</span></p>
-                     <p className="text-yellow-400">Prize Pool: <span className="font-bold">{typeof gameState.prizePool === 'number' ? gameState.prizePool : '0'} F</span></p>
+                    <h1 className="text-3xl font-bold text-purple-400">{t('app.title')}</h1>
+                     <p className="text-gray-300">{t('lobby.welcome', { displayName: userData.displayName })}</p>
+                     <p className="text-yellow-400">{t('game.balance')}: <span className="font-bold">{typeof userData.fichas === 'number' ? userData.fichas : '...'} F</span></p>
+                     <p className="text-yellow-400">{t('game.prizePool')}: <span className="font-bold">{typeof gameState.prizePool === 'number' ? gameState.prizePool : '0'} F</span></p>
                 </div>
                 <div className="text-center">
                     {gameState.status === 'running' && lastDrawnNumber && (
                         <div key={lastDrawnNumber} className="animate-pulse">
-                            <p className="text-lg">Last Ball:</p> 
+                            <p className="text-lg">{t('game.lastBall')}:</p> 
                             <span className="font-bold text-6xl text-green-400 drop-shadow-lg">{getBingoLetter(lastDrawnNumber)}-{lastDrawnNumber}</span>
                         </div>
                     )}
-                    <p className="text-sm mt-2">Next ball in: <span className="font-bold text-xl">{gameState.countdown}s</span></p>
+                    <p className="text-sm mt-2">{t('game.nextBall')}: <span className="font-bold text-xl">{gameState.countdown}s</span></p>
                 </div>
-                <button onClick={onBackToLobby} className="py-2 px-4 bg-red-600 hover:bg-red-700 rounded-lg font-semibold self-start">&larr; Back to Lobby</button>
+                <button onClick={onBackToLobby} className="py-2 px-4 bg-red-600 hover:bg-red-700 rounded-lg font-semibold self-start">&larr; {t('profile.backToLobby')}</button>
             </header>
 
             {gameState.status === 'ended' && (
@@ -337,7 +341,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                         </h2>
                         
                         <div className="my-6">
-                            <h3 className="text-2xl font-bold mb-4">Congratulations to the Winner(s)!</h3>
+                            <h3 className="text-2xl font-bold mb-4">{t('game.congratsWinners')}</h3>
                             <div className="space-y-3 max-w-md mx-auto">
                                 {gameState.winners.map((winner, index) => (
                                     <div key={index} className="bg-gray-900 bg-opacity-50 p-3 rounded-lg flex justify-between items-center text-lg">
@@ -352,12 +356,12 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                         
                         {gameState.winners.length > 0 && (
                             <div className="mb-6">
-                                <h3 className="text-xl font-semibold mb-2">Winning Card(s):</h3>
+                                <h3 className="text-xl font-semibold mb-2">{t('game.winningCards')}:</h3>
                                 <div className="flex justify-center flex-wrap gap-4 mt-2 p-2">
                                     {gameState.winners.map((winner, index) => (
                                         <div key={index} className="flex-shrink-0 w-48 md:w-56">
                                             <BingoCard numbers={winner.card} drawnNumbers={gameState.drawnNumbers} gameStatus="ended" onBingo={()=>{}} isWinningCard={true} />
-                                            <p className="text-center font-semibold mt-1 text-sm">{winner.displayName}'s Card</p>
+                                            <p className="text-center font-semibold mt-1 text-sm">{t('game.winnersCard', { displayName: winner.displayName })}</p>
                                         </div>
                                     ))}
                                 </div>
@@ -365,7 +369,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                         )}
 
                         <p className="mt-4 text-lg">
-                            New game starting in <span className="font-bold text-2xl text-green-400">{endGameCountdown}s</span>...
+                            {t('game.newGameIn')} <span className="font-bold text-2xl text-green-400">{endGameCountdown}s</span>...
                         </p>
                     </div>
                 </div>
@@ -382,7 +386,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                     
                      {(gameState.status === 'waiting' || gameState.status === 'running') && (
                         <div className="mt-4">
-                            <h2 className="text-xl font-bold text-center mb-2">Player Ranking ({Object.keys(gameState.players).length})</h2>
+                            <h2 className="text-xl font-bold text-center mb-2">{t('game.playerRanking', { count: Object.keys(gameState.players).length })}</h2>
                             <div className="pr-2">
                                 {sortedPlayers.length > 0 ? (
                                     <ul className="space-y-2">
@@ -391,20 +395,20 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                                                 <div className="flex-1 min-w-0">
                                                     <p className="font-semibold text-white truncate" title={player.displayName}>
                                                         {player.displayName}
-                                                        {uid === user.uid && <span className="text-yellow-400 font-normal"> (You)</span>}
+                                                        {uid === user.uid && <span className="text-yellow-400 font-normal"> ({t('game.you')})</span>}
                                                     </p>
-                                                    <p className="text-xs text-gray-400">{typeof player.cardCount === 'number' ? player.cardCount : '?'} card(s)</p>
+                                                    <p className="text-xs text-gray-400">{t('game.cardsCount', { count: typeof player.cardCount === 'number' ? player.cardCount : '?' })}</p>
                                                 </div>
                                                 {player.progress !== undefined && typeof player.progress === 'number' && player.progress > 0 && gameState.status === 'running' && (
                                                     <span className="text-sm bg-blue-500 text-white font-bold py-1 px-2 rounded-full flex-shrink-0 ml-2">
-                                                        Needs {player.progress}
+                                                        {t('game.needs', { count: player.progress })}
                                                     </span>
                                                 )}
                                             </li>
                                         ))}
                                     </ul>
                                 ) : (
-                                    <p className="text-gray-400 text-center italic mt-4">No players have bought cards yet.</p>
+                                    <p className="text-gray-400 text-center italic mt-4">{t('game.noPlayers')}</p>
                                 )}
                             </div>
                         </div>
@@ -412,8 +416,8 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                 </div>
                 <div className="w-3/4 flex flex-col">
                     <div className="bg-gray-800 rounded-lg p-4 mb-4 flex justify-between items-center">
-                        <h2 className="text-xl font-bold">Your Cards ({myCards.length})</h2>
-                        <button onClick={handleBuyCard} disabled={gameState.status !== 'waiting'} className="py-2 px-6 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed">Buy Card (10 F)</button>
+                        <h2 className="text-xl font-bold">{t('game.yourCards', { count: myCards.length })}</h2>
+                        <button onClick={handleBuyCard} disabled={gameState.status !== 'waiting'} className="py-2 px-6 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed">{t('game.buyCard')}</button>
                     </div>
                     {error && <p className="text-red-400 text-center mb-2">{error}</p>}
                     <div className="flex-grow overflow-y-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-2">

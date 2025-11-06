@@ -1,6 +1,6 @@
-
 import React, { useEffect, useState } from 'react';
 import { calculateCardProgress } from '../utils/bingoUtils';
+import { useLanguage } from '../context/LanguageContext';
 
 interface BingoCardProps {
     numbers: number[];
@@ -13,6 +13,7 @@ interface BingoCardProps {
 export const BingoCard: React.FC<BingoCardProps> = ({ numbers, drawnNumbers, onBingo, gameStatus, isWinningCard = false }) => {
     const [hasBingo, setHasBingo] = useState(false);
     const lastDrawnNumber = drawnNumbers[drawnNumbers.length - 1];
+    const { t } = useLanguage();
 
     const isMarked = (num: number) => {
         if (num === 0) return true; // Free space
@@ -46,7 +47,7 @@ export const BingoCard: React.FC<BingoCardProps> = ({ numbers, drawnNumbers, onB
                         ${!marked && !isCenter ? 'bg-gray-700 text-gray-300' : ''}
                         ${marked && !isCenter && isLast && gameStatus === 'running' ? 'marked-animation' : ''}
                     `}>
-                        {isCenter ? 'FREE' : num}
+                        {isCenter ? t('game.free') : num}
                     </div>
                 );
             })}

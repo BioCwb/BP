@@ -1,4 +1,5 @@
 import React from 'react';
+import { useLanguage } from '../context/LanguageContext';
 
 interface BingoMasterBoardProps {
   drawnNumbers: number[];
@@ -13,9 +14,10 @@ const BINGO_COLS = [
 ];
 
 export const BingoMasterBoard: React.FC<BingoMasterBoardProps> = ({ drawnNumbers }) => {
+  const { t } = useLanguage();
   return (
     <div>
-      <h2 className="text-xl font-bold text-center mb-4 sticky top-0 bg-gray-800 py-2">Master Board ({drawnNumbers.length}/75)</h2>
+      <h2 className="text-xl font-bold text-center mb-4 sticky top-0 bg-gray-800 py-2">{t('game.masterBoard', { drawn: drawnNumbers.length, total: 75 })}</h2>
       <div className="grid grid-cols-5 gap-x-2 text-center">
         {BINGO_COLS.map(col => (
           <div key={col.letter}>

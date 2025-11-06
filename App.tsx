@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { auth, googleProvider, db } from './firebase/config';
 // FIX: Removed firebase v9 modular imports as they are not compatible with the project setup, causing "no exported member" errors.
@@ -13,6 +12,7 @@ import { GoogleIcon } from './components/icons/GoogleIcon';
 import { ProfileManagement } from './components/ProfileManagement';
 import { GameLobby } from './components/GameLobby';
 import { BingoGame } from './components/BingoGame';
+import { useLanguage } from './context/LanguageContext';
 
 type AuthMode = 'login' | 'register';
 type ViewMode = 'auth' | 'lobby' | 'game' | 'profile';
@@ -48,6 +48,7 @@ export default function App() {
   const [userData, setUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<ViewMode>('auth');
+  const { t } = useLanguage();
 
   // Login State
   const [loginEmail, setLoginEmail] = useState('');
@@ -124,18 +125,18 @@ export default function App() {
         }
       }, (err) => {
           console.error("Error fetching user data:", err);
-          setError("Failed to load your profile. Please check your connection and disable ad blockers. You have been logged out.");
+          setError(t('error.profileLoad'));
           handleLogout(); // Log out on critical data fetch failure
       });
       return () => unsubscribe();
     }
-  }, [currentUser?.uid]);
+  }, [currentUser?.uid, t]);
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     if (!loginEmail || !loginPassword) {
-      setError('Please fill in all fields.');
+      setError(t('error.fillAllFields'));
       return;
     }
     try {
@@ -147,7 +148,7 @@ export default function App() {
         await auth.signOut();
       }
     } catch (err: any) {
-      setError('Invalid email or password.');
+      setError(t('error.invalidCredentials'));
     }
   };
   
@@ -160,7 +161,7 @@ export default function App() {
         await auth.signInWithPopup(googleProvider);
     } catch (err: any) {
         if (err.code !== 'auth/popup-closed-by-user') {
-            setError('Failed to sign in with Google. Please try again.');
+            setError(t('error.googleSignInFailed'));
             console.error(err);
         }
     }
@@ -170,11 +171,11 @@ export default function App() {
     e.preventDefault();
     setError(null);
     if (!registerUsername || !registerEmail || !registerPassword || !registerConfirmPassword) {
-      setError('Please fill in all fields.');
+      setError(t('error.fillAllFields'));
       return;
     }
     if (registerPassword !== registerConfirmPassword) {
-      setError('Passwords do not match.');
+      setError(t('error.passwordsDoNotMatch'));
       return;
     }
     try {
@@ -206,11 +207,11 @@ export default function App() {
 
     } catch (err: any) {
         if (err.code === 'auth/email-already-in-use') {
-          setError('This email is already registered.');
+          setError(t('error.emailInUse'));
         } else if (err.code === 'auth/weak-password') {
-          setError('Password should be at least 6 characters.');
+          setError(t('error.weakPassword'));
         } else {
-          setError('Failed to create an account. Please try again.');
+          setError(t('error.accountCreationFailed'));
         }
     }
   };
@@ -232,21 +233,21 @@ export default function App() {
         await needsVerification.sendEmailVerification();
         setResendStatus('sent');
     } catch (error) {
-        setError("Failed to resend verification email.");
+        setError(t('error.resendVerificationFailed'));
     }
   };
 
   
   const renderVerificationView = () => (
       <div className="w-full max-w-md bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl p-8 text-center">
-        <h2 className="text-3xl font-bold text-white mb-4">Verify Your Email</h2>
-        <p className="text-gray-300 mb-6">Please check your inbox at <strong className="text-white">{needsVerification?.email}</strong> and click the verification link.</p>
+        <h2 className="text-3xl font-bold text-white mb-4">{t('verify.title')}</h2>
+        <p className="text-gray-300 mb-6">{t('verify.checkInbox')} <strong className="text-white">{needsVerification?.email}</strong> {t('verify.clickLink')}</p>
         <div className="space-y-4">
             <button onClick={handleResendVerification} disabled={resendStatus === 'sent'} className="w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-semibold transition-colors duration-300 disabled:bg-gray-600 disabled:cursor-not-allowed">
-                {resendStatus === 'sent' ? 'Verification Sent!' : 'Resend Verification Email'}
+                {resendStatus === 'sent' ? t('verify.sent') : t('verify.resend')}
             </button>
             <button onClick={() => setNeedsVerification(null)} className="w-full py-3 px-4 bg-gray-600 hover:bg-gray-700 rounded-lg text-white font-semibold">
-                Back to Login
+                {t('verify.backToLogin')}
             </button>
         </div>
         {error && <p className="mt-4 text-center text-red-400">{error}</p>}
@@ -255,10 +256,10 @@ export default function App() {
   
   const renderPostRegistrationView = () => (
       <div className="w-full max-w-md bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl p-8 text-center">
-        <h2 className="text-3xl font-bold text-white mb-4">Registration Successful!</h2>
-        <p className="text-gray-300 mb-6">A verification link has been sent to your email. Please check your inbox.</p>
+        <h2 className="text-3xl font-bold text-white mb-4">{t('register.successTitle')}</h2>
+        <p className="text-gray-300 mb-6">{t('register.successMessage')}</p>
         <button onClick={() => setShowVerificationMessage(false)} className="w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-semibold">
-            Got it, take me to Login
+            {t('register.gotIt')}
         </button>
       </div>
   );
@@ -266,32 +267,32 @@ export default function App() {
   const renderAuthForms = () => (
       <div className="w-full max-w-md bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl overflow-hidden">
             <div className="flex">
-              <TabButton mode="login" currentMode={authMode} onClick={handleTabChange}>Login</TabButton>
-              <TabButton mode="register" currentMode={authMode} onClick={handleTabChange}>Register</TabButton>
+              <TabButton mode="login" currentMode={authMode} onClick={handleTabChange}>{t('login.title')}</TabButton>
+              <TabButton mode="register" currentMode={authMode} onClick={handleTabChange}>{t('register.title')}</TabButton>
             </div>
             <div className="p-8">
               {authMode === 'login' ? (
                 <>
-                  <AuthForm title="Welcome Back!" onSubmit={handleLoginSubmit} buttonText="Login">
-                    <InputField id="login-email" label="Email" type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="Enter your email" icon={<EmailIcon />} />
-                    <InputField id="login-password" label="Password" type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="Enter your password" icon={<LockIcon />} />
+                  <AuthForm title="auth.welcome" onSubmit={handleLoginSubmit} buttonText="login.title">
+                    <InputField id="login-email" label="auth.email" type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="auth.emailPlaceholder" icon={<EmailIcon />} />
+                    <InputField id="login-password" label="auth.password" type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="auth.passwordPlaceholder" icon={<LockIcon />} />
                   </AuthForm>
                   <div className="relative flex py-5 items-center">
                     <div className="flex-grow border-t border-gray-600"></div>
-                    <span className="flex-shrink mx-4 text-gray-400 text-sm">Or</span>
+                    <span className="flex-shrink mx-4 text-gray-400 text-sm">{t('auth.or')}</span>
                     <div className="flex-grow border-t border-gray-600"></div>
                   </div>
                   <button onClick={handleGoogleSignIn} aria-label="Sign in with Google" className="w-full flex items-center justify-center py-2.5 px-4 bg-white hover:bg-gray-200 rounded-lg text-gray-700 font-semibold transition-colors duration-300 shadow-md">
                     <GoogleIcon className="w-5 h-5 mr-3" />
-                    Sign in with Google
+                    {t('auth.signInWithGoogle')}
                   </button>
                 </>
               ) : (
-                <AuthForm title="Create Account" onSubmit={handleRegisterSubmit} buttonText="Register">
-                  <InputField id="register-username" label="Username" type="text" value={registerUsername} onChange={(e) => setRegisterUsername(e.target.value)} placeholder="Choose a username" icon={<UserIcon />} />
-                  <InputField id="register-email" label="Email" type="email" value={registerEmail} onChange={(e) => setRegisterEmail(e.target.value)} placeholder="Enter your email" icon={<EmailIcon />} />
-                  <InputField id="register-password" label="Password" type="password" value={registerPassword} onChange={(e) => setRegisterPassword(e.target.value)} placeholder="Create a password" icon={<LockIcon />} />
-                  <InputField id="register-confirm-password" label="Confirm Password" type="password" value={registerConfirmPassword} onChange={(e) => setRegisterConfirmPassword(e.target.value)} placeholder="Confirm your password" icon={<LockIcon />} />
+                <AuthForm title="auth.createAccount" onSubmit={handleRegisterSubmit} buttonText="register.title">
+                  <InputField id="register-username" label="auth.username" type="text" value={registerUsername} onChange={(e) => setRegisterUsername(e.target.value)} placeholder="auth.usernamePlaceholder" icon={<UserIcon />} />
+                  <InputField id="register-email" label="auth.email" type="email" value={registerEmail} onChange={(e) => setRegisterEmail(e.target.value)} placeholder="auth.emailPlaceholder" icon={<EmailIcon />} />
+                  <InputField id="register-password" label="auth.password" type="password" value={registerPassword} onChange={(e) => setRegisterPassword(e.target.value)} placeholder="auth.createPasswordPlaceholder" icon={<LockIcon />} />
+                  <InputField id="register-confirm-password" label="auth.confirmPassword" type="password" value={registerConfirmPassword} onChange={(e) => setRegisterConfirmPassword(e.target.value)} placeholder="auth.confirmPasswordPlaceholder" icon={<LockIcon />} />
                 </AuthForm>
               )}
               {error && (<p className="mt-4 text-center text-red-400 bg-red-900 bg-opacity-50 p-3 rounded-lg">{error}</p>)}
@@ -302,7 +303,7 @@ export default function App() {
   const renderContent = () => {
     if (loading || (currentUser && !userData)) {
       return (
-        <div className="text-white text-2xl">Loading...</div>
+        <div className="text-white text-2xl">{t('loading')}...</div>
       );
     }
     
@@ -328,8 +329,8 @@ export default function App() {
     <div className={appContainerClasses}>
         {viewMode === 'auth' && !showVerificationMessage && !needsVerification && (
             <div className="text-center mb-8">
-                <h1 className="text-5xl font-bold tracking-tight text-white sm:text-6xl">BINGO NIGHT</h1>
-                <p className="mt-4 text-lg text-gray-300">Your turn to win!</p>
+                <h1 className="text-5xl font-bold tracking-tight text-white sm:text-6xl">{t('app.title')}</h1>
+                <p className="mt-4 text-lg text-gray-300">{t('app.subtitle')}</p>
             </div>
         )}
         {renderContent()}
