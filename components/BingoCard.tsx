@@ -1,10 +1,11 @@
+
 import React, { useEffect, useState } from 'react';
 import { calculateCardProgress } from '../utils/bingoUtils';
 
 interface BingoCardProps {
-    numbers: number[][];
+    numbers: number[];
     drawnNumbers: number[];
-    onBingo: (winningCard: number[][]) => void;
+    onBingo: (winningCard: number[]) => void;
     gameStatus: 'waiting' | 'running' | 'ended';
     isWinningCard?: boolean;
 }
@@ -33,7 +34,7 @@ export const BingoCard: React.FC<BingoCardProps> = ({ numbers, drawnNumbers, onB
     
     return (
         <div className={`grid grid-cols-5 gap-1 p-2 rounded-lg shadow-lg aspect-square transition-all duration-500 ${hasBingo || isWinningCard ? 'bg-green-500 bingo-animation' : 'bg-blue-900 bg-opacity-50'}`}>
-            {numbers.flat().map((num, index) => {
+            {numbers.map((num, index) => {
                 const isCenter = index === 12;
                 const marked = isMarked(num);
                 const isLast = num === lastDrawnNumber;

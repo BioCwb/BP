@@ -1,5 +1,12 @@
 
-export const calculateCardProgress = (numbers: number[][], drawnNumbers: number[]): { isBingo: boolean, numbersToWin: number } => {
+
+export const calculateCardProgress = (numbers: number[], drawnNumbers: number[]): { isBingo: boolean, numbersToWin: number } => {
+    // Reconstruct the 2D card from the flat array for easier bingo logic
+    const card: number[][] = [];
+    for (let i = 0; i < 5; i++) {
+        card.push(numbers.slice(i * 5, i * 5 + 5));
+    }
+
     let isBingo = false;
     let numbersToWin = 5; // The most numbers needed for any single line
 
@@ -13,8 +20,8 @@ export const calculateCardProgress = (numbers: number[][], drawnNumbers: number[
         let rowNeeded = 0;
         let colNeeded = 0;
         for (let j = 0; j < 5; j++) {
-            if (!isMarked(numbers[i][j])) rowNeeded++;
-            if (!isMarked(numbers[j][i])) colNeeded++;
+            if (!isMarked(card[i][j])) rowNeeded++;
+            if (!isMarked(card[j][i])) colNeeded++;
         }
         if (rowNeeded === 0) isBingo = true;
         if (colNeeded === 0) isBingo = true;
@@ -25,8 +32,8 @@ export const calculateCardProgress = (numbers: number[][], drawnNumbers: number[
     let diag1Needed = 0;
     let diag2Needed = 0;
     for (let i = 0; i < 5; i++) {
-        if (!isMarked(numbers[i][i])) diag1Needed++;
-        if (!isMarked(numbers[i][4 - i])) diag2Needed++;
+        if (!isMarked(card[i][i])) diag1Needed++;
+        if (!isMarked(card[i][4 - i])) diag2Needed++;
     }
     if (diag1Needed === 0) isBingo = true;
     if (diag2Needed === 0) isBingo = true;

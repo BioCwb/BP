@@ -9,8 +9,8 @@ import { calculateCardProgress } from '../utils/bingoUtils';
 import { BingoMasterBoard } from './BingoMasterBoard';
 
 
-// Helper function to generate a valid Bingo card
-const generateBingoCard = (): number[][] => {
+// Helper function to generate a valid Bingo card as a flat array
+const generateBingoCard = (): number[] => {
     const card: number[][] = Array(5).fill(null).map(() => Array(5).fill(0));
     const ranges = [
         { col: 0, min: 1, max: 15 },
@@ -35,7 +35,7 @@ const generateBingoCard = (): number[][] => {
             }
         }
     }
-    return card;
+    return card.flat();
 };
 
 interface GameState {
@@ -43,10 +43,14 @@ interface GameState {
     drawnNumbers: number[];
     players: { [uid: string]: { displayName: string; cardCount: number; progress?: number; } };
     prizePool: number;
-    winners: { uid: string, displayName: string, card: number[][] }[];
+    winners: { uid: string, displayName: string, card: number[] }[];
     host: string | null;
     countdown: number;
     lastWinnerAnnouncement: string;
+}
+
+interface BingoCardData {
+    numbers: number[];
 }
 
 interface BingoGameProps {
@@ -67,7 +71,7 @@ const getBingoLetter = (num: number) => {
 
 export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLobby }) => {
     const [gameState, setGameState] = useState<GameState | null>(null);
-    const [myCards, setMyCards] = useState<number[][][]>([]);
+    const [myCards, setMyCards] = useState<BingoCardData[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [endGameCountdown, setEndGameCountdown] = useState(10);
 
@@ -131,21 +135,25 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
 
         try {
             await db.runTransaction(async (transaction) => {
+                // --- Step 1: All reads must be first ---
                 const userDocRef = db.collection("users").doc(user.uid);
                 const userDoc = await transaction.get(userDocRef);
                 const gameDoc = await transaction.get(gameDocRef);
+                const playerCardsDoc = await transaction.get(myCardsCollectionRef);
 
-                if (!userDoc.exists || !gameDoc.exists) throw new Error("Documents not found");
+                // --- Step 2: Validation ---
+                if (!userDoc.exists || !gameDoc.exists) throw new Error("User or game data not found. Please try again.");
                 
                 const currentFichas = userDoc.data()!.fichas;
                 if (currentFichas < 10) throw new Error("Not enough Fichas!");
 
-                const newCard = generateBingoCard();
-                
-                transaction.update(userDocRef, { fichas: increment(-10) });
-
+                // --- Step 3: Logic ---
+                const newCardData: BingoCardData = { numbers: generateBingoCard() };
                 const gameData = gameDoc.data() as GameState;
                 const player = gameData.players?.[user.uid];
+
+                // --- Step 4: All writes must be last ---
+                transaction.update(userDocRef, { fichas: increment(-10) });
 
                 transaction.update(gameDocRef, {
                     prizePool: increment(9),
@@ -155,15 +163,15 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                         progress: player?.progress ?? 5,
                     }
                 });
-
-                const playerCardsDoc = await transaction.get(myCardsCollectionRef);
+                
                 if (playerCardsDoc.exists) {
-                    transaction.update(myCardsCollectionRef, { cards: arrayUnion(newCard) });
+                    transaction.update(myCardsCollectionRef, { cards: arrayUnion(newCardData) });
                 } else {
-                    transaction.set(myCardsCollectionRef, { cards: [newCard] });
+                    transaction.set(myCardsCollectionRef, { cards: [newCardData] });
                 }
             });
         } catch (e: any) {
+            console.error("Buy card transaction failed:", e);
             setError(e.message);
         }
     };
@@ -235,7 +243,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
 
     }, [gameState, user.uid, gameDocRef]);
     
-    const onBingo = useCallback(async (winningCard: number[][]) => {
+    const onBingo = useCallback(async (winningCard: number[]) => {
         if (!gameState || gameState.status !== 'running' || gameState.winners.some(w => w.uid === user.uid)) return;
         
         const prizePerWinner = Math.floor(gameState.prizePool / (gameState.winners.length + 1));
@@ -262,8 +270,8 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
         if (!myCards.length || !gameState || gameState.status !== 'running') return;
         
         let bestProgress = 5; // Default best is 5 numbers for a line
-        for (const card of myCards) {
-            const progress = calculateCardProgress(card, gameState.drawnNumbers);
+        for (const cardData of myCards) {
+            const progress = calculateCardProgress(cardData.numbers, gameState.drawnNumbers);
             if (progress.numbersToWin < bestProgress) {
                 bestProgress = progress.numbersToWin;
             }
@@ -409,8 +417,8 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                     </div>
                     {error && <p className="text-red-400 text-center mb-2">{error}</p>}
                     <div className="flex-grow overflow-y-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-2">
-                        {myCards.map((cardNumbers, index) => (
-                            <BingoCard key={index} numbers={cardNumbers} drawnNumbers={gameState.drawnNumbers} onBingo={onBingo} gameStatus={gameState.status} />
+                        {myCards.map((cardData, index) => (
+                            <BingoCard key={index} numbers={cardData.numbers} drawnNumbers={gameState.drawnNumbers} onBingo={onBingo} gameStatus={gameState.status} />
                         ))}
                     </div>
                 </div>
