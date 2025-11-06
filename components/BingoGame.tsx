@@ -4,7 +4,7 @@ import { type UserData } from '../App';
 import { db, arrayUnion, increment } from '../firebase/config';
 // FIX: Removed unused v9 firestore imports to align with the v8 compatibility syntax.
 import { BingoCard } from './BingoCard';
-import { calculateCardProgress } from '../utils/bingoUtils';
+import { calculateCardProgress, isWinningLine } from '../utils/bingoUtils';
 import { BingoMasterBoard } from './BingoMasterBoard';
 
 
@@ -49,6 +49,9 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
     const [myCards, setMyCards] = useState<BingoCardData[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [endGameCountdown, setEndGameCountdown] = useState(10);
+    // New state to track player's manual marks on each card
+    const [playerMarkedNumbers, setPlayerMarkedNumbers] = useState<{ [cardIndex: number]: number[] }>({});
+
 
     const gameDocRef = useMemo(() => db.collection('games').doc('active_game'), []);
     const myCardsCollectionRef = useMemo(() => db.collection('player_cards').doc(user.uid).collection('cards').doc('active_game'), [user.uid]);
@@ -56,7 +59,12 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
     useEffect(() => {
         const unsubGame = gameDocRef.onSnapshot((doc) => {
             if (doc.exists) {
-                setGameState(doc.data() as GameState);
+                const newState = doc.data() as GameState;
+                // Reset manual marks when a new game starts
+                if (newState.status === 'waiting' && gameState?.status !== 'waiting') {
+                    setPlayerMarkedNumbers({});
+                }
+                setGameState(newState);
             } else {
                 if (user) {
                      db.runTransaction(async (transaction) => {
@@ -100,7 +108,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
         });
 
         return () => { unsubGame(); unsubCards(); };
-    }, [user, gameDocRef, myCardsCollectionRef]);
+    }, [user, gameDocRef, myCardsCollectionRef, gameState?.status]);
     
     // Countdown timer for the end-of-game screen
     useEffect(() => {
@@ -193,30 +201,61 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
 
     }, [gameState, user.uid, gameDocRef]);
     
-    const onBingo = useCallback(async (winningCard: number[]) => {
+    const onBingo = useCallback(async (cardIndex: number) => {
+        setError(null);
         if (!gameState || gameState.status !== 'running' || gameState.winners.some(w => w.uid === user.uid)) return;
-        
+    
+        const card = myCards[cardIndex];
+        if (!card) return;
+    
+        const marks = playerMarkedNumbers[cardIndex] || [];
+    
+        // Security Check 1: Do the marked numbers actually form a line on this card?
+        if (!isWinningLine(card.numbers, marks)) {
+            setError("Linha de bingo inválida! Continue marcando.");
+            setTimeout(() => setError(null), 3000);
+            return;
+        }
+    
+        // Security Check 2: Are all the numbers the player marked actually in the official drawn numbers list?
+        const allMarksAreValid = marks.every(mark => mark === 0 || gameState.drawnNumbers.includes(mark));
+        if (!allMarksAreValid) {
+            setError("Bingo inválido! Alguns números marcados não foram sorteados.");
+            setTimeout(() => setError(null), 3000);
+            return;
+        }
+    
+        // If all checks pass, we have a legitimate winner.
         const prizePerWinner = Math.floor(gameState.prizePool / (gameState.winners.length + 1));
-        const newWinner = { uid: user.uid, displayName: user.displayName || 'Player', card: winningCard };
+        const newWinner = { uid: user.uid, displayName: user.displayName || 'Player', card: card.numbers };
         const allWinners = [...gameState.winners, newWinner];
-
+    
         const batch = db.batch();
-        batch.update(gameDocRef, { 
-            status: 'ended', 
+        batch.update(gameDocRef, {
+            status: 'ended',
             winners: allWinners
         });
-        
-        // In a multi-winner scenario, prize distribution should happen once at the end.
-        // This logic is now simplified and the final distribution happens in the host's end-game logic.
-        // For now, we assume a single winner ends the game.
+    
         for(const winner of allWinners) {
             const userDocRef = db.collection("users").doc(winner.uid);
             batch.update(userDocRef, { fichas: increment(prizePerWinner) });
         }
-        
+    
         await batch.commit();
+    }, [gameState, user, gameDocRef, myCards, playerMarkedNumbers]);
+    
+    const handleMarkNumber = useCallback((cardIndex: number, num: number) => {
+        // Prevent marking if the number hasn't been drawn yet
+        if (!gameState?.drawnNumbers.includes(num) && num !== 0) return;
 
-    }, [gameState, user, gameDocRef]);
+        setPlayerMarkedNumbers(prev => {
+            const currentMarks = prev[cardIndex] || [];
+            const newMarks = currentMarks.includes(num)
+                ? currentMarks.filter(n => n !== num)
+                : [...currentMarks, num];
+            return { ...prev, [cardIndex]: newMarks };
+        });
+    }, [gameState?.drawnNumbers]);
     
      // Player Progress Update Effect
     useEffect(() => {
@@ -323,7 +362,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                                 <div className="flex justify-center flex-wrap gap-4 mt-2 p-2">
                                     {gameState.winners.map((winner, index) => (
                                         <div key={index} className="flex-shrink-0 w-48 md:w-56">
-                                            <BingoCard numbers={winner.card} drawnNumbers={gameState.drawnNumbers} gameStatus="ended" onBingo={()=>{}} isWinningCard={true} />
+                                            <BingoCard cardIndex={-1} numbers={winner.card} drawnNumbers={gameState.drawnNumbers} gameStatus="ended" onBingo={()=>{}} isWinningCard={true} markedNumbers={winner.card.filter(n => gameState.drawnNumbers.includes(n))} onMarkNumber={() => {}} />
                                             <p className="text-center font-semibold mt-1 text-sm">Cartela de {winner.displayName}</p>
                                         </div>
                                     ))}
@@ -386,7 +425,16 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                     {error && <p className="text-red-400 text-center mb-2">{error}</p>}
                     <div className="flex-grow overflow-y-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-2">
                         {myCards.map((cardData, index) => (
-                            <BingoCard key={index} numbers={cardData.numbers} drawnNumbers={gameState.drawnNumbers} onBingo={onBingo} gameStatus={gameState.status} />
+                            <BingoCard 
+                                key={index} 
+                                cardIndex={index}
+                                numbers={cardData.numbers} 
+                                drawnNumbers={gameState.drawnNumbers} 
+                                onBingo={onBingo} 
+                                gameStatus={gameState.status}
+                                markedNumbers={playerMarkedNumbers[index] || []}
+                                onMarkNumber={handleMarkNumber}
+                             />
                         ))}
                     </div>
                 </div>

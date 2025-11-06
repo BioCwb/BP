@@ -31,3 +31,4 @@ export const googleProvider = new firebase.auth.GoogleAuthProvider();
 export const EmailAuthProvider = firebase.auth.EmailAuthProvider;
 export const arrayUnion = firebase.firestore.FieldValue.arrayUnion;
 export const increment = firebase.firestore.FieldValue.increment;
+export const serverTimestamp = firebase.firestore.FieldValue.serverTimestamp;

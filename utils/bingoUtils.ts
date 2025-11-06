@@ -79,3 +79,34 @@ export const calculateCardProgress = (numbers: number[], drawnNumbers: number[])
 
     return { isBingo, numbersToWin };
 };
+
+// New function to check for a winning line based on player's manual marks
+export const isWinningLine = (cardNumbers: number[], markedNumbers: number[]): boolean => {
+    const card: number[][] = [];
+    for (let i = 0; i < 5; i++) {
+        card.push(cardNumbers.slice(i * 5, i * 5 + 5));
+    }
+
+    const isMarkedByPlayer = (num: number) => {
+        if (num === 0) return true; // Free space is always marked
+        return markedNumbers.includes(num);
+    };
+
+    // Check rows
+    for (let i = 0; i < 5; i++) {
+        if (card[i].every(isMarkedByPlayer)) return true;
+    }
+
+    // Check columns
+    for (let j = 0; j < 5; j++) {
+        if (card.every(row => isMarkedByPlayer(row[j]))) return true;
+    }
+
+    // Check diagonal (top-left to bottom-right)
+    if (card.every((row, i) => isMarkedByPlayer(row[i]))) return true;
+
+    // Check diagonal (top-right to bottom-left)
+    if (card.every((row, i) => isMarkedByPlayer(row[4 - i]))) return true;
+
+    return false;
+};

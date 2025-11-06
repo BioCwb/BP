@@ -21,6 +21,14 @@
       .marked-animation {
         animation: mark-number-pulse 1.5s ease-in-out infinite;
       }
+
+      @keyframes highlight-pulse {
+        0%, 100% { border-color: #FBBF24; box-shadow: 0 0 3px #FBBF24; }
+        50% { border-color: #F59E0B; box-shadow: 0 0 10px #FBBF24, 0 0 15px #F59E0B; }
+      }
+      .highlight-animation {
+        animation: highlight-pulse 1.5s ease-in-out infinite;
+      }
     </style>
     <script src="https://cdn.tailwindcss.com"></script>
   <script type="importmap">

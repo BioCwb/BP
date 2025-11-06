@@ -8,6 +8,7 @@ Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real cons
 - **Autenticação Segura:** Sistema de login e registro com e-mail/senha e login social com Google. Inclui verificação de e-mail.
 - **Lobby do Jogo:** Uma área central onde os jogadores podem ver seu saldo, comprar cartelas e entrar na próxima partida.
 - **Compra de Cartelas:** Os jogadores podem comprar até 50 cartelas por rodada usando fichas virtuais (F).
+- **Bônus Diário:** Possibilidade de resgatar 10 Fichas (F) gratuitas uma vez por dia para continuar jogando.
 - **Jogabilidade em Tempo Real:** Sorteio de números e marcação automática das cartelas, tudo sincronizado em tempo real para todos os jogadores usando Firestore.
 - **Ranking Dinâmico:** Um placar na tela do jogo mostra o progresso dos jogadores, indicando quantos números faltam para cada um ganhar.
 - **Gerenciamento de Perfil:** Os jogadores podem atualizar seu nome de usuário e alterar sua senha.

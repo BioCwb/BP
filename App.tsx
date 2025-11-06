@@ -21,6 +21,7 @@ export interface UserData {
   displayName: string;
   email: string;
   fichas: number;
+  lastBonusClaimedAt?: firebase.firestore.Timestamp;
 }
 
 // FIX: Moved TabButton component outside of the App component to prevent re-definition on each render
@@ -35,7 +36,7 @@ interface TabButtonProps {
 const TabButton: React.FC<TabButtonProps> = ({ mode, currentMode, onClick, children }) => (
   <button
     onClick={() => onClick(mode)}
-    className={`w-1/2 py-3 text-center font-semibold transition-colors duration-300 focus:outline-none ${currentMode === mode ? 'text-white border-b-2 border-purple-500' : 'text-gray-400 hover:text-white'}`}
+    className={`w-1/2 py-3 text-center font-semibold transition-all duration-300 focus:outline-none ${currentMode === mode ? 'text-white border-b-2 border-purple-500' : 'text-gray-400 hover:text-white'}`}
   >
     {children}
   </button>
@@ -242,7 +243,7 @@ export default function App() {
         <h2 className="text-3xl font-bold text-white mb-4">Verifique seu E-mail</h2>
         <p className="text-gray-300 mb-6">Por favor, verifique sua caixa de entrada em <strong className="text-white">{needsVerification?.email}</strong> e clique no link de verificação.</p>
         <div className="space-y-4">
-            <button onClick={handleResendVerification} disabled={resendStatus === 'sent'} className="w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-semibold transition-colors duration-300 disabled:bg-gray-600 disabled:cursor-not-allowed">
+            <button onClick={handleResendVerification} disabled={resendStatus === 'sent'} className="w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-semibold transition-all duration-300 disabled:bg-gray-600 disabled:cursor-not-allowed">
                 {resendStatus === 'sent' ? 'Verificação Enviada!' : 'Reenviar E-mail de Verificação'}
             </button>
             <button onClick={() => setNeedsVerification(null)} className="w-full py-3 px-4 bg-gray-600 hover:bg-gray-700 rounded-lg text-white font-semibold">
@@ -281,7 +282,7 @@ export default function App() {
                     <span className="flex-shrink mx-4 text-gray-400 text-sm">Ou</span>
                     <div className="flex-grow border-t border-gray-600"></div>
                   </div>
-                  <button onClick={handleGoogleSignIn} aria-label="Sign in with Google" className="w-full flex items-center justify-center py-2.5 px-4 bg-white hover:bg-gray-200 rounded-lg text-gray-700 font-semibold transition-colors duration-300 shadow-md">
+                  <button onClick={handleGoogleSignIn} aria-label="Sign in with Google" className="w-full flex items-center justify-center py-2.5 px-4 bg-white hover:bg-gray-200 rounded-lg text-gray-700 font-semibold transition-all duration-300 shadow-md">
                     <GoogleIcon className="w-5 h-5 mr-3" />
                     Entrar com o Google
                   </button>

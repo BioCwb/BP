@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { type UserData } from '../App';
 import type firebase from 'firebase/compat/app';
-import { db, arrayUnion, increment } from '../firebase/config';
+import { db, arrayUnion, increment, serverTimestamp } from '../firebase/config';
 import type { GameState } from './BingoGame';
 import { generateBingoCard } from '../utils/bingoUtils';
 
@@ -26,6 +26,9 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
   const [myCardCount, setMyCardCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isBuying, setIsBuying] = useState(false);
+  const [isBonusAvailable, setIsBonusAvailable] = useState(false);
+  const [bonusCooldown, setBonusCooldown] = useState('');
+  const [isClaimingBonus, setIsClaimingBonus] = useState(false);
 
   const gameDocRef = useMemo(() => db.collection('games').doc('active_game'), []);
   const myCardsCollectionRef = useMemo(() => db.collection('player_cards').doc(user.uid).collection('cards').doc('active_game'), [user.uid]);
@@ -49,6 +52,36 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
 
     return () => { unsubGame(); unsubCards(); };
   }, [gameDocRef, myCardsCollectionRef]);
+  
+  // Effect to check and update the daily bonus availability and cooldown timer.
+  useEffect(() => {
+    const timer = setInterval(() => {
+        const lastClaim = userData.lastBonusClaimedAt?.toDate();
+        if (!lastClaim) {
+            setIsBonusAvailable(true);
+            setBonusCooldown('');
+            return;
+        }
+
+        const now = new Date();
+        const twentyFourHours = 24 * 60 * 60 * 1000;
+        const nextClaimTime = lastClaim.getTime() + twentyFourHours;
+
+        if (now.getTime() >= nextClaimTime) {
+            setIsBonusAvailable(true);
+            setBonusCooldown('');
+        } else {
+            setIsBonusAvailable(false);
+            const remainingMs = nextClaimTime - now.getTime();
+            const hours = Math.floor(remainingMs / (1000 * 60 * 60));
+            const minutes = Math.floor((remainingMs % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((remainingMs % (1000 * 60)) / 1000);
+            setBonusCooldown(`${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`);
+        }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [userData.lastBonusClaimedAt]);
   
   const handleBuyCard = async () => {
     setError(null);
@@ -105,9 +138,25 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
     }
   };
 
-  const handleComingSoon = () => {
-    alert('Esta funcionalidade chegará em breve!');
-  }
+  const handleDailyBonus = async () => {
+    if (!isBonusAvailable || isClaimingBonus) return;
+    
+    setIsClaimingBonus(true);
+    setError(null);
+    
+    try {
+        const userDocRef = db.collection("users").doc(user.uid);
+        await userDocRef.update({
+            fichas: increment(10),
+            lastBonusClaimedAt: serverTimestamp()
+        });
+    } catch (e: any) {
+        console.error("Daily bonus claim failed:", e);
+        setError("Falha ao resgatar o bônus. Tente novamente.");
+    } finally {
+        setIsClaimingBonus(false);
+    }
+  };
 
   const canBuyCard = gameState?.status === 'waiting' && !isBuying;
 
@@ -124,26 +173,27 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
         <div className="space-y-4">
              <button
                 onClick={onPlay}
-                className="w-full py-4 px-4 bg-green-600 hover:bg-green-700 rounded-lg text-white font-bold text-xl transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
+                className="w-full py-4 px-4 bg-green-600 hover:bg-green-700 rounded-lg text-white font-bold text-xl transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
              >
                 JOGAR BINGO
             </button>
              <button
                 onClick={handleBuyCard}
                 disabled={!canBuyCard}
-                className="w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-semibold transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50 disabled:bg-gray-600 disabled:cursor-not-allowed"
+                className="w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50 disabled:bg-gray-600 disabled:cursor-not-allowed"
              >
                 {isBuying ? 'Comprando...' : 'Comprar Cartela (10 F)'}
             </button>
              <button
-                onClick={handleComingSoon}
-                className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-semibold transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50"
+                onClick={handleDailyBonus}
+                disabled={!isBonusAvailable || isClaimingBonus}
+                className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 disabled:bg-gray-600 disabled:cursor-not-allowed"
              >
-                Resgatar Bônus Diário (10 F)
+                {isClaimingBonus ? 'Resgatando...' : (isBonusAvailable ? 'Resgatar Bônus Diário (10 F)' : `Próximo bônus em ${bonusCooldown}`)}
             </button>
              <button
                 onClick={onManageProfile}
-                className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-white font-semibold transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50"
+                className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50"
              >
                 Gerenciar Perfil
             </button>
@@ -151,7 +201,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
             {user.uid === ADMIN_UID && (
               <button
                 onClick={onGoToAdmin}
-                className="w-full py-3 px-4 bg-yellow-600 hover:bg-yellow-700 rounded-lg text-black font-semibold transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-opacity-50"
+                className="w-full py-3 px-4 bg-yellow-600 hover:bg-yellow-700 rounded-lg text-black font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-opacity-50"
               >
                 Painel do Admin
               </button>
@@ -159,7 +209,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
 
             <button
                 onClick={onLogout}
-                className="w-full py-3 px-4 bg-red-600 hover:bg-red-700 rounded-lg text-white font-semibold transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50"
+                className="w-full py-3 px-4 bg-red-600 hover:bg-red-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50"
             >
                 Sair
             </button>

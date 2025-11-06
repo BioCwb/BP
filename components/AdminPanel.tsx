@@ -49,8 +49,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
         }
     };
 
+    const { totalPlayers, totalCards } = useMemo(() => {
+        if (!gameState?.players) {
+            return { totalPlayers: 0, totalCards: 0 };
+        }
+        // FIX: The type of `player` in the reduce function below was inferred as `unknown`.
+        // Casting the result of `Object.values` to a typed array resolves the error.
+        const playersArray = Object.values(gameState.players) as { cardCount: number }[];
+        const cardCount = playersArray.reduce((acc, player) => acc + (player.cardCount || 0), 0);
+        return { totalPlayers: playersArray.length, totalCards: cardCount };
+    }, [gameState?.players]);
+
+    const canForceStart = gameState?.status === 'waiting' && totalPlayers >= 2 && totalCards >= 2;
+
     const handleForceStart = async () => {
-        if (gameState?.status === 'waiting' && gameState.players && Object.keys(gameState.players).length > 0) {
+        if (canForceStart) {
             try {
                 await gameDocRef.update({ status: 'running', countdown: gameState.drawIntervalDuration || 5 });
                 showMessage('success', 'Jogo iniciado forçadamente!');
@@ -58,7 +71,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
                 showMessage('error', 'Falha ao iniciar o jogo.');
             }
         } else {
-            showMessage('error', 'O jogo não pode ser iniciado sem jogadores com cartelas.');
+            showMessage('error', 'O jogo requer no mínimo 2 jogadores e 2 cartelas vendidas para iniciar.');
         }
     };
     
@@ -117,14 +130,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
             }
         }
     };
-    
-    const canForceStart = gameState?.status === 'waiting' && gameState.players && Object.keys(gameState.players).length > 0;
 
     return (
         <div className="w-full max-w-2xl bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl p-8 text-white">
             <div className="flex items-center justify-between mb-6">
                 <h2 className="text-3xl font-bold">Painel de Administração</h2>
-                <button onClick={onBack} className="text-gray-300 hover:text-white transition-colors">&larr; Voltar para o Lobby</button>
+                <button onClick={onBack} className="text-gray-300 hover:text-white">&larr; Voltar para o Lobby</button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6 text-center">
@@ -138,7 +149,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
                 </div>
                 <div className="bg-gray-700 p-4 rounded-lg">
                     <p className="text-sm text-gray-400">Jogadores no Lobby</p>
-                    <p className="text-2xl font-bold">{gameState ? Object.keys(gameState.players).length : 0}</p>
+                    <p className="text-2xl font-bold">{totalPlayers}</p>
                 </div>
                 <div className="bg-gray-700 p-4 rounded-lg">
                     <p className="text-sm text-gray-400">Prêmio Acumulado</p>
@@ -154,7 +165,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
                       {(gameState?.status === 'running' || gameState?.status === 'paused') && (
                         <button 
                             onClick={handleTogglePause}
-                            className={`flex-1 py-2 px-4 rounded-lg font-semibold transition-colors ${
+                            className={`flex-1 py-2 px-4 rounded-lg font-semibold transition-all ${
                                 gameState.status === 'running'
                                 ? 'bg-yellow-500 hover:bg-yellow-600 text-black'
                                 : 'bg-blue-500 hover:bg-blue-600 text-white'
@@ -166,6 +177,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
 
                      <button onClick={handleResetGame} className="flex-1 py-2 px-4 bg-red-600 hover:bg-red-700 rounded-lg font-semibold">Resetar Jogo</button>
                  </div>
+                 {!canForceStart && gameState?.status === 'waiting' && (
+                    <p className="text-center text-sm text-yellow-400 mt-2">
+                        Para iniciar: mínimo de 2 jogadores e 2 cartelas vendidas.<br />
+                        (Atualmente: {totalPlayers} jogador(es), {totalCards} cartela(s))
+                    </p>
+                 )}
             </div>
 
             <div className="bg-gray-900 p-4 rounded-lg">

@@ -91,7 +91,7 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, onBa
     <div className="w-full max-w-md bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl p-8">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-3xl font-bold text-white">Gerenciar Perfil</h2>
-        <button onClick={onBack} className="text-gray-300 hover:text-white transition-colors">&larr; Voltar para o Lobby</button>
+        <button onClick={onBack} className="text-gray-300 hover:text-white">&larr; Voltar para o Lobby</button>
       </div>
 
       <form onSubmit={handleProfileUpdate} className="space-y-4 border-b border-gray-700 pb-6 mb-6">
@@ -106,7 +106,7 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, onBa
         />
         <button
           type="submit"
-          className="w-full py-2.5 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-semibold transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50"
+          className="w-full py-2.5 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50"
         >
           Salvar Nome de Usuário
         </button>
@@ -146,7 +146,7 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, onBa
           />
           <button
             type="submit"
-            className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-semibold transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50"
+            className="w-full py-2.5 px-4 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50"
           >
             Atualizar Senha
           </button>
