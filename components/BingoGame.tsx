@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import type firebase from 'firebase/compat/app';
+import firebase from 'firebase/compat/app';
 import { type UserData } from '../App';
 import { db, increment } from '../firebase/config';
 // FIX: Removed unused v9 firestore imports to align with the v8 compatibility syntax.
