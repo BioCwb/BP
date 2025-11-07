@@ -4,7 +4,7 @@ import { type UserData } from '../App';
 import { db, increment } from '../firebase/config';
 // FIX: Removed unused v9 firestore imports to align with the v8 compatibility syntax.
 import { BingoCard } from './BingoCard';
-import { isWinningLine } from '../utils/bingoUtils';
+import { calculateCardProgress } from '../utils/bingoUtils';
 import { BingoMasterBoard } from './BingoMasterBoard';
 
 
@@ -51,8 +51,6 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
     const [myCards, setMyCards] = useState<BingoCardData[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [endGameCountdown, setEndGameCountdown] = useState(10);
-    // New state to track player's manual marks on each card
-    const [playerMarkedNumbers, setPlayerMarkedNumbers] = useState<{ [cardIndex: number]: number[] }>({});
     const [playerStatuses, setPlayerStatuses] = useState<{ [uid: string]: 'online' | 'offline' }>({});
     const [allPlayerCards, setAllPlayerCards] = useState<{[uid: string]: {displayName: string, cards: BingoCardData[]}}>({});
     const lastSeenTimestampsRef = useRef<{ [uid: string]: number }>({});
@@ -67,9 +65,6 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
             if (!isMounted) return;
             if (doc.exists) {
                 const newState = doc.data() as GameState;
-                if (newState.status === 'waiting' && gameState?.status !== 'waiting') {
-                    setPlayerMarkedNumbers({});
-                }
                 setGameState(newState);
             } else {
                  setError('O jogo ativo não foi encontrado. Redirecionando para o lobby.');
@@ -98,7 +93,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
             unsubGame();
             if (unsubCards) unsubCards();
         };
-    }, [user, gameDocRef, myCardsCollectionRef, gameState?.status, isSpectator, onBackToLobby]);
+    }, [user, gameDocRef, myCardsCollectionRef, isSpectator, onBackToLobby]);
 
     // Fetch all player cards for spectator mode
     useEffect(() => {
@@ -228,51 +223,85 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
 
     }, [gameState, user.uid, gameDocRef]);
     
-    const onBingo = useCallback(async (cardIndex: number) => {
-        setError(null);
-        if (isSpectator || !gameState || gameState.status !== 'running' || gameState.winners.some(w => w.uid === user.uid)) return;
-    
-        const card = myCards[cardIndex];
-        if (!card) return;
-    
-        const marks = playerMarkedNumbers[cardIndex] || [];
-    
-        if (!isWinningLine(card.numbers, marks, gameState.drawnNumbers)) {
-            setError("Bingo inválido! Continue marcando ou verifique seus números.");
-            setTimeout(() => setError(null), 3000);
+    // New effect for host to automatically check for winners and update progress
+    const isCheckingWinnerRef = useRef(false);
+    useEffect(() => {
+        if (user.uid !== gameState?.host || gameState.status !== 'running' || isCheckingWinnerRef.current) {
             return;
         }
-    
-        const prizePerWinner = Math.floor(gameState.prizePool / (gameState.winners.length + 1));
-        const newWinner = { uid: user.uid, displayName: user.displayName || 'Player', card: card.numbers };
-        const allWinners = [...gameState.winners, newWinner];
-    
-        const batch = db.batch();
-        batch.update(gameDocRef, {
-            status: 'ended',
-            winners: allWinners
-        });
-    
-        for(const winner of allWinners) {
-            const userDocRef = db.collection("users").doc(winner.uid);
-            batch.update(userDocRef, { fichas: increment(prizePerWinner) });
-        }
-    
-        await batch.commit();
-    }, [gameState, user, gameDocRef, myCards, playerMarkedNumbers, isSpectator]);
-    
-    const handleMarkNumber = useCallback((cardIndex: number, num: number) => {
-        if (isSpectator) return;
-        if (!gameState?.drawnNumbers.includes(num) && num !== 0) return;
 
-        setPlayerMarkedNumbers(prev => {
-            const currentMarks = prev[cardIndex] || [];
-            const newMarks = currentMarks.includes(num)
-                ? currentMarks.filter(n => n !== num)
-                : [...currentMarks, num];
-            return { ...prev, [cardIndex]: newMarks };
-        });
-    }, [gameState?.drawnNumbers, isSpectator]);
+        const checkWinnerAndProgress = async () => {
+            isCheckingWinnerRef.current = true;
+            
+            try {
+                const drawnNumbers = gameState.drawnNumbers;
+                // Optimization: A blackout bingo requires at least 24 numbers to be drawn.
+                if (drawnNumbers.length < 24) { 
+                    isCheckingWinnerRef.current = false;
+                    return; 
+                }
+                
+                const allPlayerCardsSnapshot = await db.collectionGroup('cards').where(firebase.firestore.FieldPath.documentId(), '==', 'active_game').get();
+                
+                const currentWinners: { uid: string, displayName: string, card: number[] }[] = [];
+                const playerProgressUpdates: { [key: string]: any } = {};
+
+                for (const doc of allPlayerCardsSnapshot.docs) {
+                    const uid = doc.ref.parent.parent!.id;
+                    const playerData = gameState.players[uid];
+                    if (!playerData) continue;
+
+                    const cards = doc.data()!.cards as BingoCardData[];
+                    let minNumbersToWin = 24;
+
+                    for (const cardData of cards) {
+                        const progress = calculateCardProgress(cardData.numbers, drawnNumbers);
+                        minNumbersToWin = Math.min(minNumbersToWin, progress.numbersToWin);
+
+                        if (progress.isBingo) {
+                            if (!currentWinners.some(w => w.uid === uid)) {
+                                currentWinners.push({ uid, displayName: playerData.displayName, card: cardData.numbers });
+                            }
+                        }
+                    }
+                    playerProgressUpdates[`players.${uid}.progress`] = minNumbersToWin;
+                }
+
+                const freshGameState = (await gameDocRef.get()).data() as GameState;
+                if (freshGameState.status !== 'running') {
+                    isCheckingWinnerRef.current = false;
+                    return;
+                }
+
+                if (currentWinners.length > 0) {
+                    const prizePerWinner = Math.floor(gameState.prizePool / currentWinners.length);
+                    const batch = db.batch();
+
+                    batch.update(gameDocRef, {
+                        status: 'ended',
+                        winners: currentWinners,
+                        ...playerProgressUpdates
+                    });
+
+                    for (const winner of currentWinners) {
+                        const userDocRef = db.collection("users").doc(winner.uid);
+                        batch.update(userDocRef, { fichas: increment(prizePerWinner) });
+                    }
+                    await batch.commit();
+                } else {
+                    await gameDocRef.update(playerProgressUpdates);
+                }
+            } catch (err) {
+                console.error("Error checking for winner:", err);
+            } finally {
+                isCheckingWinnerRef.current = false;
+            }
+        };
+
+        const timeoutId = setTimeout(checkWinnerAndProgress, 500); // Debounce slightly
+        return () => clearTimeout(timeoutId);
+
+    }, [gameState?.drawnNumbers, gameState?.host, gameState?.status, user.uid, gameDocRef, gameState?.players, gameState?.prizePool]);
 
     const sortedPlayers = useMemo(() => {
         if (!gameState || !gameState.players) return [];
@@ -319,14 +348,10 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                         {playerData.cards.map((cardData, index) => (
                              <BingoCard 
                                 key={`${uid}-${index}`} 
-                                cardIndex={index}
                                 numbers={cardData.numbers} 
                                 drawnNumbers={gameState.drawnNumbers} 
-                                onBingo={() => {}} 
                                 gameStatus={gameState.status}
-                                markedNumbers={[]}
-                                onMarkNumber={() => {}}
-                                isSpectatorView={true}
+                                isWinningCard={gameState.status === 'ended' && gameState.winners.some(w => w.uid === uid && JSON.stringify(w.card) === JSON.stringify(cardData.numbers))}
                              />
                         ))}
                     </div>
@@ -338,13 +363,10 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                 {myCards.map((cardData, index) => (
                     <BingoCard 
                         key={index} 
-                        cardIndex={index}
                         numbers={cardData.numbers} 
                         drawnNumbers={gameState.drawnNumbers} 
-                        onBingo={onBingo} 
                         gameStatus={gameState.status}
-                        markedNumbers={playerMarkedNumbers[index] || []}
-                        onMarkNumber={handleMarkNumber}
+                        isWinningCard={gameState.status === 'ended' && gameState.winners.some(w => w.uid === user.uid && JSON.stringify(w.card) === JSON.stringify(cardData.numbers))}
                      />
                 ))}
             </div>
@@ -425,7 +447,14 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                                                           {player.displayName}
                                                           {uid === user.uid && !isSpectator && <span className="text-yellow-400 font-normal"> (Você)</span>}
                                                       </p>
+                                                      <p className="text-xs text-gray-300">
+                                                        Faltam: {player.progress ?? '-'}
+                                                      </p>
                                                     </div>
+                                                </div>
+                                                <div className="text-right ml-2 flex-shrink-0">
+                                                    <p className="font-semibold text-white">{player.cardCount || 0}</p>
+                                                    <p className="text-xs text-gray-400">Cartela(s)</p>
                                                 </div>
                                             </li>
                                         ))}

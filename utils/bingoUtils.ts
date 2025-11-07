@@ -39,87 +39,14 @@ export const generateBingoCard = (): number[] => {
 
 
 export const calculateCardProgress = (numbers: number[], drawnNumbers: number[]): { isBingo: boolean, numbersToWin: number } => {
-    // Reconstruct the 2D card from the flat array for easier bingo logic
-    const card: number[][] = [];
-    for (let i = 0; i < 5; i++) {
-        card.push(numbers.slice(i * 5, i * 5 + 5));
-    }
-
-    let isBingo = false;
-    let numbersToWin = 5; // The most numbers needed for any single line
-
-    const isMarked = (num: number) => {
-        if (num === 0) return true; // Free space
-        return drawnNumbers.includes(num);
-    };
-
-    // Check rows and columns
-    for (let i = 0; i < 5; i++) {
-        let rowNeeded = 0;
-        let colNeeded = 0;
-        for (let j = 0; j < 5; j++) {
-            if (!isMarked(card[i][j])) rowNeeded++;
-            if (!isMarked(card[j][i])) colNeeded++;
+    let numbersToWin = 0;
+    for (const num of numbers) {
+        // Count numbers on the card that have not been drawn yet (excluding the free space)
+        if (num !== 0 && !drawnNumbers.includes(num)) {
+            numbersToWin++;
         }
-        if (rowNeeded === 0) isBingo = true;
-        if (colNeeded === 0) isBingo = true;
-        numbersToWin = Math.min(numbersToWin, rowNeeded, colNeeded);
     }
-
-    // Check diagonals
-    let diag1Needed = 0;
-    let diag2Needed = 0;
-    for (let i = 0; i < 5; i++) {
-        if (!isMarked(card[i][i])) diag1Needed++;
-        if (!isMarked(card[i][4 - i])) diag2Needed++;
-    }
-    if (diag1Needed === 0) isBingo = true;
-    if (diag2Needed === 0) isBingo = true;
-    numbersToWin = Math.min(numbersToWin, diag1Needed, diag2Needed);
-
+    // A blackout bingo is achieved when there are no numbers left to be drawn.
+    const isBingo = numbersToWin === 0;
     return { isBingo, numbersToWin };
-};
-
-// New function to check for a winning line based on player's manual marks
-export const isWinningLine = (cardNumbers: number[], markedNumbers: number[], drawnNumbers: number[]): boolean => {
-    const card: number[][] = [];
-    for (let i = 0; i < 5; i++) {
-        card.push(cardNumbers.slice(i * 5, i * 5 + 5));
-    }
-
-    const isMarkedByPlayer = (num: number) => {
-        if (num === 0) return true; // Free space is always marked
-        return markedNumbers.includes(num);
-    };
-
-    const checkLine = (line: number[]): boolean => {
-        // Check 1: Does the player have all numbers in this line marked?
-        const isLineComplete = line.every(isMarkedByPlayer);
-        if (!isLineComplete) return false;
-
-        // Security Check 2: Are all the numbers the player marked in this line *actually* in the official drawn numbers list?
-        const allMarksAreValid = line.every(num => num === 0 || drawnNumbers.includes(num));
-        return allMarksAreValid;
-    }
-
-    // Check rows
-    for (let i = 0; i < 5; i++) {
-        if (checkLine(card[i])) return true;
-    }
-
-    // Check columns
-    for (let j = 0; j < 5; j++) {
-        const column = card.map(row => row[j]);
-        if (checkLine(column)) return true;
-    }
-
-    // Check diagonal (top-left to bottom-right)
-    const diag1 = card.map((row, i) => row[i]);
-    if (checkLine(diag1)) return true;
-
-    // Check diagonal (top-right to bottom-left)
-    const diag2 = card.map((row, i) => row[4 - i]);
-    if (checkLine(diag2)) return true;
-
-    return false;
 };

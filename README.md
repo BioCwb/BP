@@ -41,15 +41,15 @@ Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real cons
 ## 룰 Manual e Regras do Jogo
 
 ### Objetivo
-O objetivo é ser o primeiro jogador a completar uma linha em qualquer uma de suas cartelas. Uma linha pode ser **horizontal, vertical ou diagonal**.
+O objetivo é ser o primeiro jogador a completar uma cartela inteira (todos os 24 números). O sistema detecta o vencedor automaticamente.
 
 ### Como Jogar
 1.  **Crie uma Conta e Faça Login:** Use seu e-mail ou conta Google para acessar o jogo. Novos jogadores recebem um bônus de 100 Fichas (F).
 2.  **Acesse o Lobby:** Após o login, você estará no lobby. Aqui você pode conversar com outros jogadores e ver seu saldo de fichas.
 3.  **Compre Suas Cartelas:** Antes de a partida começar, clique no botão "Comprar Cartela (10 F)". Cada cartela custa 10 Fichas. Você pode comprar até 50 cartelas por rodada.
 4.  **Aguarde o Início:** O jogo não começa automaticamente. O administrador iniciará a partida manualmente. A exigência mínima é de **2 jogadores e 2 cartelas vendidas**.
-5.  **Marque os Números:** Quando um número é sorteado, ele **não** será marcado para você. Se o número estiver em sua cartela, você deve **clicar nele para marcá-lo**. Se você não marcar em 3 segundos, uma borda em destaque aparecerá para te ajudar.
-6.  **Grite BINGO!** Quando você completar uma linha (5 números) em qualquer direção, o botão "BINGO!" na sua cartela vencedora ficará ativo. **Você deve clicar neste botão** para declarar sua vitória. O sistema fará uma verificação final para garantir que sua vitória é legítima.
+5.  **Acompanhe suas Cartelas:** Quando um número é sorteado, o sistema o marcará automaticamente em todas as cartelas. Acompanhe o preenchimento para ver o quão perto você está de ganhar!
+6.  **Vitória Automática:** O primeiro jogador a ter todos os 24 números de uma cartela sorteados vence o jogo. O sistema detecta a vitória instantaneamente e encerra a partida, declarando o(s) vencedor(es).
 7.  **Retorno ao Lobby:** Após a exibição dos vencedores, todos os jogadores retornam automaticamente ao lobby para se prepararem para a próxima rodada.
 
 ### Prêmios

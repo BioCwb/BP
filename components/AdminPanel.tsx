@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { db } from '../firebase/config';
+import { db, serverTimestamp } from '../firebase/config';
 import type { GameState } from './BingoGame';
 
 interface AdminPanelProps {
@@ -8,6 +8,7 @@ interface AdminPanelProps {
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
     const [gameState, setGameState] = useState<GameState | null>(null);
+    const [onlinePlayersCount, setOnlinePlayersCount] = useState(0);
     const [lobbyTime, setLobbyTime] = useState(30);
     const [drawTime, setDrawTime] = useState(8);
     const [endTime, setEndTime] = useState(15);
@@ -29,6 +30,29 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
         });
         return () => unsubscribe();
     }, [gameDocRef]);
+
+    useEffect(() => {
+        const statusCollectionRef = db.collection('player_status');
+
+        const countOnlinePlayers = () => {
+            // A player is online if they've been seen in the last 30 seconds.
+            const thirtySecondsAgo = new Date(Date.now() - 30000);
+            
+            // Note: This query requires a Firestore index on 'lastSeen'.
+            statusCollectionRef.where('lastSeen', '>', thirtySecondsAgo).get()
+                .then(snapshot => {
+                    setOnlinePlayersCount(snapshot.size);
+                })
+                .catch(err => {
+                    console.error("Error getting online player count: ", err);
+                });
+        };
+
+        countOnlinePlayers();
+        const intervalId = setInterval(countOnlinePlayers, 10000); // Refresh every 10 seconds
+
+        return () => clearInterval(intervalId);
+    }, []);
     
     const showMessage = (type: 'success' | 'error', text: string) => {
         setMessage({ type, text });
@@ -77,23 +101,37 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
     
     const handleResetGame = async () => {
         if (window.confirm('Tem certeza que deseja resetar o jogo? Isso limpará todos os jogadores e cartelas.')) {
+            if (!gameState) {
+                showMessage('error', 'Estado do jogo não encontrado.');
+                return;
+            }
              try {
-                const announcement = gameState?.winners.length ? `Último(s) vencedor(es): ${gameState.winners.map(w => w.displayName).join(', ')}` : "Jogo resetado pelo administrador.";
+                const announcement = gameState.winners.length ? `Último(s) vencedor(es): ${gameState.winners.map(w => w.displayName).join(', ')}` : "Jogo resetado pelo administrador.";
 
                 const batch = db.batch();
+
+                // Archive the game if it has properly ended.
+                if (gameState.status === 'ended') {
+                    const historyRef = db.collection('game_history').doc();
+                    batch.set(historyRef, {
+                        winners: gameState.winners,
+                        drawnNumbers: gameState.drawnNumbers,
+                        prizePool: gameState.prizePool,
+                        completedAt: serverTimestamp()
+                    });
+                }
+                
+                // Reset active game
                 batch.update(gameDocRef, { 
                     status: 'waiting', 
                     drawnNumbers: [], 
                     prizePool: 0, 
                     winners: [], 
-                    countdown: gameState?.lobbyCountdownDuration || 15,
+                    countdown: gameState.lobbyCountdownDuration || 15,
                     lastWinnerAnnouncement: announcement,
                     players: {},
                     pauseReason: ''
                 });
-                
-                // Note: This reset does not clear player cards from subcollections for safety.
-                // A more robust solution would use a Cloud Function to handle cascading deletes.
                 
                 await batch.commit();
                 showMessage('success', 'Jogo resetado com sucesso!');
@@ -148,8 +186,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
                     <p className="text-2xl font-bold">{gameState?.drawnNumbers.length || 0} / 60</p>
                 </div>
                 <div className="bg-gray-700 p-4 rounded-lg">
-                    <p className="text-sm text-gray-400">Jogadores no Lobby</p>
-                    <p className="text-2xl font-bold">{totalPlayers}</p>
+                    <p className="text-sm text-gray-400">Jogadores Online</p>
+                    <p className="text-2xl font-bold">{onlinePlayersCount}</p>
                 </div>
                 <div className="bg-gray-700 p-4 rounded-lg">
                     <p className="text-sm text-gray-400">Prêmio Acumulado</p>

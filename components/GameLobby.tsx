@@ -31,6 +31,14 @@ interface ChatMessage {
     timestamp: firebase.firestore.Timestamp;
 }
 
+interface GameHistoryItem {
+    id: string;
+    winners: { uid: string; displayName: string; card: number[] }[];
+    drawnNumbers: number[];
+    prizePool: number;
+    completedAt: firebase.firestore.Timestamp;
+}
+
 export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, onSpectate, onManageProfile, onLogout, onGoToAdmin }) => {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [myCardCount, setMyCardCount] = useState(0);
@@ -43,10 +51,13 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
   const [newMessage, setNewMessage] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
   const [onlinePlayersCount, setOnlinePlayersCount] = useState(0);
+  const [gameHistory, setGameHistory] = useState<GameHistoryItem[]>([]);
+  const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
 
   const gameDocRef = useMemo(() => db.collection('games').doc('active_game'), []);
   const myCardsCollectionRef = useMemo(() => db.collection('player_cards').doc(user.uid).collection('cards').doc('active_game'), [user.uid]);
   const chatCollectionRef = useMemo(() => db.collection('chat'), []);
+  const gameHistoryCollectionRef = useMemo(() => db.collection('game_history'), []);
 
   useEffect(() => {
     const unsubGame = gameDocRef.onSnapshot((doc) => {
@@ -70,8 +81,16 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
         setChatMessages(messages);
     });
 
-    return () => { unsubGame(); unsubCards(); unsubChat(); };
-  }, [gameDocRef, myCardsCollectionRef, chatCollectionRef]);
+    const unsubHistory = gameHistoryCollectionRef
+        .orderBy('completedAt', 'desc')
+        .limit(5)
+        .onSnapshot(snapshot => {
+            const history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as GameHistoryItem));
+            setGameHistory(history);
+        });
+
+    return () => { unsubGame(); unsubCards(); unsubChat(); unsubHistory(); };
+  }, [gameDocRef, myCardsCollectionRef, chatCollectionRef, gameHistoryCollectionRef]);
 
   // Effect to count online players.
   useEffect(() => {
@@ -245,65 +264,109 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
   return (
     <div className="bg-gray-800 bg-opacity-70 backdrop-blur-sm rounded-xl shadow-2xl p-6 md:p-8 w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* Coluna da Esquerda: Controles do Jogo */}
-        <div className="text-center">
-            <div className="mb-6">
-                <h2 className="text-3xl font-bold text-white">Bem-vindo, {userData.displayName}!</h2>
-                <p className="text-2xl font-bold text-yellow-400 mt-2">Saldo: {typeof userData.fichas === 'number' ? userData.fichas : '...'} F</p>
-                <p className="text-lg text-green-400 mt-1">Jogadores Online: {onlinePlayersCount}</p>
-                <p className="text-lg text-gray-300 mt-1">Você tem {myCardCount} cartela(s).</p>
-            </div>
-            
-            {error && <p className="text-red-400 bg-red-900 bg-opacity-50 p-3 rounded-lg mb-4">{error}</p>}
-            
-            <div className="space-y-4">
-                 <button
-                    onClick={onPlay}
-                    className="w-full py-4 px-4 bg-green-600 hover:bg-green-700 rounded-lg text-white font-bold text-xl transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
-                 >
-                    JOGAR BINGO
-                </button>
-                 <button
-                    onClick={handleBuyCard}
-                    disabled={!canBuyCard}
-                    className="w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50 disabled:bg-gray-600 disabled:cursor-not-allowed"
-                 >
-                    {isBuying ? 'Comprando...' : 'Comprar Cartela (10 F)'}
-                </button>
-                <button
-                    onClick={onSpectate}
-                    className="w-full py-3 px-4 bg-teal-600 hover:bg-teal-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-opacity-50"
-                >
-                    Assistir como Espectador
-                </button>
-                 <button
-                    onClick={handleDailyBonus}
-                    disabled={!isBonusAvailable || isClaimingBonus}
-                    className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 disabled:bg-gray-600 disabled:cursor-not-allowed"
-                 >
-                    {isClaimingBonus ? 'Resgatando...' : (isBonusAvailable ? 'Resgatar Bônus Diário (10 F)' : `Próximo bônus em ${bonusCooldown}`)}
-                </button>
-                 <button
-                    onClick={onManageProfile}
-                    className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50"
-                 >
-                    Gerenciar Perfil
-                </button>
+        <div className="flex flex-col">
+            <div className="text-center">
+                <div className="mb-6">
+                    <h2 className="text-3xl font-bold text-white">Bem-vindo, {userData.displayName}!</h2>
+                    <p className="text-2xl font-bold text-yellow-400 mt-2">Saldo: {typeof userData.fichas === 'number' ? userData.fichas : '...'} F</p>
+                    <p className="text-lg text-green-400 mt-1">Jogadores Online: {onlinePlayersCount}</p>
+                    <p className="text-lg text-gray-300 mt-1">Você tem {myCardCount} cartela(s).</p>
+                </div>
                 
-                {user.uid === ADMIN_UID && (
-                  <button
-                    onClick={onGoToAdmin}
-                    className="w-full py-3 px-4 bg-yellow-600 hover:bg-yellow-700 rounded-lg text-black font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-opacity-50"
-                  >
-                    Painel do Admin
-                  </button>
-                )}
+                {error && <p className="text-red-400 bg-red-900 bg-opacity-50 p-3 rounded-lg mb-4">{error}</p>}
+                
+                <div className="space-y-4">
+                     <button
+                        onClick={onPlay}
+                        className="w-full py-4 px-4 bg-green-600 hover:bg-green-700 rounded-lg text-white font-bold text-xl transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
+                     >
+                        JOGAR BINGO
+                    </button>
+                     <button
+                        onClick={handleBuyCard}
+                        disabled={!canBuyCard}
+                        className="w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-opacity-50 disabled:bg-gray-600 disabled:cursor-not-allowed"
+                     >
+                        {isBuying ? 'Comprando...' : 'Comprar Cartela (10 F)'}
+                    </button>
+                    <button
+                        onClick={onSpectate}
+                        className="w-full py-3 px-4 bg-teal-600 hover:bg-teal-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-opacity-50"
+                    >
+                        Assistir como Espectador
+                    </button>
+                     <button
+                        onClick={handleDailyBonus}
+                        disabled={!isBonusAvailable || isClaimingBonus}
+                        className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 disabled:bg-gray-600 disabled:cursor-not-allowed"
+                     >
+                        {isClaimingBonus ? 'Resgatando...' : (isBonusAvailable ? 'Resgatar Bônus Diário (10 F)' : `Próximo bônus em ${bonusCooldown}`)}
+                    </button>
+                     <button
+                        onClick={onManageProfile}
+                        className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50"
+                     >
+                        Gerenciar Perfil
+                    </button>
+                    
+                    {user.uid === ADMIN_UID && (
+                      <button
+                        onClick={onGoToAdmin}
+                        className="w-full py-3 px-4 bg-yellow-600 hover:bg-yellow-700 rounded-lg text-black font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-opacity-50"
+                      >
+                        Painel do Admin
+                      </button>
+                    )}
 
-                <button
-                    onClick={onLogout}
-                    className="w-full py-3 px-4 bg-red-600 hover:bg-red-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50"
-                >
-                    Sair
-                </button>
+                    <button
+                        onClick={onLogout}
+                        className="w-full py-3 px-4 bg-red-600 hover:bg-red-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50"
+                    >
+                        Sair
+                    </button>
+                </div>
+            </div>
+
+            <div className="mt-6 flex-grow flex flex-col min-h-0">
+                <h3 className="text-xl font-bold text-center text-white mb-4 border-t border-gray-700 pt-4 flex-shrink-0">Histórico de Partidas</h3>
+                {gameHistory.length > 0 ? (
+                    <div className="space-y-2 overflow-y-auto pr-2 flex-grow">
+                        {gameHistory.map(game => (
+                            <div key={game.id} className="bg-gray-900 bg-opacity-50 rounded-lg p-3">
+                                <button
+                                    onClick={() => setExpandedHistoryId(expandedHistoryId === game.id ? null : game.id)}
+                                    className="w-full text-left focus:outline-none"
+                                >
+                                    <div className="flex justify-between items-center">
+                                        <div>
+                                            <p className="font-semibold text-purple-300">
+                                                Vencedor(es): {game.winners.length > 0 ? game.winners.map(w => w.displayName).join(', ') : 'Nenhum'}
+                                            </p>
+                                            <p className="text-xs text-gray-400">
+                                                {game.completedAt ? new Date(game.completedAt.toDate()).toLocaleString('pt-BR') : 'Data indisponível'}
+                                            </p>
+                                        </div>
+                                        <span className={`transform transition-transform text-purple-300 ${expandedHistoryId === game.id ? 'rotate-180' : 'rotate-0'}`}>▼</span>
+                                    </div>
+                                </button>
+                                {expandedHistoryId === game.id && (
+                                    <div className="mt-2 pt-2 border-t border-gray-700">
+                                        <p className="text-sm font-semibold mb-1">Números Sorteados ({game.drawnNumbers.length}):</p>
+                                        <div className="flex flex-wrap gap-1">
+                                            {game.drawnNumbers.sort((a, b) => a - b).map(num => (
+                                                <span key={num} className="bg-green-500 text-white text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full">
+                                                    {num}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <p className="text-gray-400 text-center italic mt-4 flex-grow">Nenhuma partida recente encontrada.</p>
+                )}
             </div>
         </div>
 
