@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import type firebase from 'firebase/compat/app';
+import firebase from 'firebase/compat/app';
 import { db, serverTimestamp, increment, auth, EmailAuthProvider } from '../firebase/config';
 import type { GameState } from './BingoGame';
 import { TrashIcon } from './icons/TrashIcon';
@@ -43,6 +43,7 @@ interface AdminLogItem {
 export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [gameState, setGameState] = useState<GameState | null>(null);
     const [onlinePlayersCount, setOnlinePlayersCount] = useState(0);
+    const [totalPlayerFichas, setTotalPlayerFichas] = useState(0);
     const [lobbyTime, setLobbyTime] = useState(30);
     const [drawTime, setDrawTime] = useState(8);
     const [endTime, setEndTime] = useState(15);
@@ -125,6 +126,40 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
 
         return () => clearInterval(intervalId);
     }, []);
+    
+    // Effect to calculate and listen for changes in the total fichas of all players in the game.
+    useEffect(() => {
+        // Guard against running when there are no players
+        if (!gameState?.players || Object.keys(gameState.players).length === 0) {
+            setTotalPlayerFichas(0);
+            return;
+        }
+
+        const playerIds = Object.keys(gameState.players);
+        
+        // Firestore 'in' query has a limit (30 for onSnapshot), which is fine for this game's scale.
+        if (playerIds.length === 0) {
+            setTotalPlayerFichas(0);
+            return;
+        }
+
+        const unsubscribe = db.collection('users')
+            .where(firebase.firestore.FieldPath.documentId(), 'in', playerIds)
+            .onSnapshot(snapshot => {
+                let total = 0;
+                snapshot.forEach(doc => {
+                    // Safely access 'fichas' property
+                    total += doc.data()?.fichas || 0;
+                });
+                setTotalPlayerFichas(total);
+            }, err => {
+                console.error("Error fetching total player fichas:", err);
+                showMessage('error', 'Falha ao carregar o total de fichas dos jogadores.');
+                setTotalPlayerFichas(0); // Reset on error
+            });
+
+        return () => unsubscribe(); // Cleanup listener on component unmount or when players change
+    }, [gameState?.players]);
 
     const filteredPurchaseHistory = useMemo(() => {
         if (!purchaseHistorySearch) return purchaseHistory;
@@ -548,22 +583,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             )}
 
             {/* Top Stats Row */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6 text-center">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-4 mb-6 text-center">
                 <div className="bg-gray-700 p-4 rounded-lg">
                     <p className="text-sm text-gray-400">Status do Jogo</p>
                     <p className="text-2xl font-bold capitalize">{gameState?.status || 'N/A'}</p>
-                </div>
-                 <div className="bg-gray-700 p-4 rounded-lg">
-                    <p className="text-sm text-gray-400">Bolas Sorteadas</p>
-                    <p className="text-2xl font-bold">{gameState?.drawnNumbers.length || 0} / 60</p>
                 </div>
                 <div className="bg-gray-700 p-4 rounded-lg">
                     <p className="text-sm text-gray-400">Jogadores Online</p>
                     <p className="text-2xl font-bold">{onlinePlayersCount}</p>
                 </div>
                 <div className="bg-gray-700 p-4 rounded-lg">
+                    <p className="text-sm text-gray-400">Total Fichas (Jogadores)</p>
+                    <p className="text-2xl font-bold">{totalPlayerFichas} F</p>
+                </div>
+                <div className="bg-gray-700 p-4 rounded-lg">
                     <p className="text-sm text-gray-400">Prêmio Acumulado</p>
                     <p className="text-2xl font-bold">{gameState?.prizePool || 0} F</p>
+                </div>
+                 <div className="bg-gray-700 p-4 rounded-lg">
+                    <p className="text-sm text-gray-400">Bolas Sorteadas</p>
+                    <p className="text-2xl font-bold">{gameState?.drawnNumbers.length || 0} / 60</p>
                 </div>
             </div>
             

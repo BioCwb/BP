@@ -53,6 +53,7 @@ export default function App() {
   // Login State
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
+  const [loginSuccess, setLoginSuccess] = useState(false);
 
   // Register State
   const [registerUsername, setRegisterUsername] = useState('');
@@ -72,6 +73,7 @@ export default function App() {
     setError(null);
     setShowVerificationMessage(false);
     setNeedsVerification(null);
+    setLoginSuccess(false);
   };
 
 
@@ -153,6 +155,7 @@ export default function App() {
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setLoginSuccess(false);
     if (!loginEmail || !loginPassword) {
       setError('Por favor, preencha todos os campos.');
       return;
@@ -164,6 +167,8 @@ export default function App() {
         setNeedsVerification(userCredential.user);
         // FIX: Switched from v9 signOut(auth) to v8 auth.signOut()
         await auth.signOut();
+      } else {
+        setLoginSuccess(true);
       }
     } catch (err: any) {
       setError('E-mail ou senha inválidos.');
@@ -174,9 +179,11 @@ export default function App() {
     setError(null);
     setNeedsVerification(null);
     setShowVerificationMessage(false);
+    setLoginSuccess(false);
     try {
         // FIX: Switched from v9 signInWithPopup(auth, ...) to v8 auth.signInWithPopup(...)
         await auth.signInWithPopup(googleProvider);
+        setLoginSuccess(true);
     } catch (err: any) {
         if (err.code !== 'auth/popup-closed-by-user') {
             setError('Falha ao entrar com o Google. Por favor, tente novamente.');
@@ -282,7 +289,17 @@ export default function App() {
       </div>
   );
   
-  const renderAuthForms = () => (
+  const renderAuthForms = () => {
+    if (loginSuccess) {
+        return (
+            <div className="w-full max-w-md bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl p-6 sm:p-8 text-center animate-pulse">
+                <h2 className="text-2xl sm:text-3xl font-bold text-green-400 mb-4">Login bem-sucedido!</h2>
+                <p className="text-gray-300">Preparando o lobby para você...</p>
+            </div>
+        );
+    }
+
+    return (
       <div className="w-full max-w-md bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl overflow-hidden">
             <div className="flex">
               <TabButton mode="login" currentMode={authMode} onClick={handleTabChange}>Entrar</TabButton>
@@ -316,7 +333,8 @@ export default function App() {
               {error && (<p className="mt-4 text-center text-red-400 bg-red-900 bg-opacity-50 p-3 rounded-lg">{error}</p>)}
             </div>
           </div>
-  );
+      );
+  };
 
   const renderContent = () => {
     if (loading || (currentUser && !userData)) {
