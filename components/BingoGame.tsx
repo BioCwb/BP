@@ -9,7 +9,7 @@ import { BingoMasterBoard } from './BingoMasterBoard';
 
 
 export interface GameState {
-    status: 'waiting' | 'starting' | 'running' | 'ended' | 'paused';
+    status: 'waiting' | 'running' | 'ended' | 'paused';
     drawnNumbers: number[];
     players: { [uid: string]: { displayName: string; cardCount: number; progress?: number; } };
     prizePool: number;
@@ -327,12 +327,6 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                             <span className="font-bold text-6xl text-green-400 drop-shadow-lg">{getBingoLetter(lastDrawnNumber)}-{lastDrawnNumber}</span>
                         </div>
                     )}
-                     {gameState.status === 'starting' && (
-                        <div>
-                            <p className="text-lg">Jogo começando em:</p>
-                            <span className="font-bold text-6xl text-yellow-400 drop-shadow-lg">{gameState.countdown}</span>
-                        </div>
-                    )}
                      {gameState.status === 'waiting' && <p className="text-xl font-bold">Aguardando início...</p>}
                      {gameState.status === 'running' && (
                         <p className="text-sm mt-2">Próxima bola em: <span className="font-bold text-xl">{gameState.countdown}s</span></p>
@@ -348,20 +342,9 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                             BINGO!
                         </h2>
                         <div className="my-6">
-                            <h3 className="text-2xl font-bold mb-2">
-                                {gameState.winners.length > 0 ? 'Parabéns ao(s) Vencedor(es)!' : 'Fim de Jogo!'}
-                            </h3>
-                            {gameState.winners.length > 0 ? (
-                                <div className="my-4 p-4 bg-black bg-opacity-20 rounded-lg">
-                                    <p className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-green-300 to-yellow-300 animate-pulse">
-                                        {gameState.winners.map(w => w.displayName).join(' & ')}
-                                    </p>
-                                </div>
-                            ) : (
-                                <p className="text-xl text-gray-300 my-4">Ninguém venceu desta vez!</p>
-                            )}
+                            <h3 className="text-2xl font-bold mb-4">Parabéns ao(s) Vencedor(es)!</h3>
                             {gameState.prizePool > 0 && gameState.winners.length > 0 &&
-                              <p className="text-lg text-yellow-300">O prêmio de <span className="font-bold">{gameState.prizePool} F</span> foi para você(s)!</p>
+                              <p className="text-lg text-yellow-300 mb-4">O prêmio de <span className="font-bold">{gameState.prizePool} F</span> foi dividido entre {gameState.winners.length} vencedor(es)!</p>
                             }
                         </div>
                         <p className="mt-4 text-lg">
@@ -379,7 +362,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
             <main className="flex-grow flex gap-4 overflow-hidden">
                 <div className="w-1/4 bg-gray-800 rounded-lg p-4 flex flex-col overflow-y-auto">
                     <BingoMasterBoard drawnNumbers={gameState.drawnNumbers} />
-                     {(gameState.status === 'waiting' || gameState.status === 'running' || gameState.status === 'starting') && (
+                     {(gameState.status === 'waiting' || gameState.status === 'running') && (
                         <div className="mt-4">
                             <h2 className="text-xl font-bold text-center mb-2">Ranking de Jogadores ({Object.keys(gameState.players).length})</h2>
                             <div className="pr-2">

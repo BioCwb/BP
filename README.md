@@ -1,6 +1,6 @@
 # Noite do Bingo
 
-**Versão Atual: 1.0.1**
+**Versão Atual: 1.0.0**
 
 Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real construído com React, TypeScript e Firebase. Este projeto oferece uma experiência de jogo completa com autenticação de usuários, um lobby interativo, jogabilidade em tempo real e um painel de administração robusto para gerenciamento total da partida.
 
@@ -11,14 +11,14 @@ Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real cons
 - **Lobby do Jogo:** Uma área central onde os jogadores podem ver seu saldo, comprar cartelas e entrar na próxima partida.
 - **Chat em Tempo Real no Lobby:** Converse com outros jogadores no lobby enquanto espera o início do jogo.
 - **Compra de Cartelas:** Os jogadores podem comprar até 10 cartelas por rodada usando fichas virtuais (F).
-- **Bônus Diário e de Boas-Vindas:** Novos jogadores recebem um bônus de boas-vindas. Além disso, todos podem resgatar um bônus diário gratuito uma vez por dia para continuar jogando. Os valores são configuráveis pelo administrador.
+- **Bônus Diário:** Possibilidade de resgatar 10 Fichas (F) gratuitas uma vez por dia para continuar jogando.
 - **Jogabilidade Automatizada:** Sente-se e assista! O sistema marca automaticamente os números sorteados em suas cartelas.
 - **Detecção Automática de Vencedor:** O jogo detecta automaticamente o primeiro jogador a completar uma cartela inteira (blackout) e encerra a partida.
 - **Ranking Dinâmico:** Um placar na tela do jogo mostra o progresso dos jogadores em tempo real, indicando quantos números faltam para cada um.
 - **Status de Conexão do Jogador:** Veja quem está online ou offline através de um indicador de status (verde/vermelho) no ranking.
 - **Modo Espectador:** Entre no jogo como espectador para assistir à partida em tempo real, visualizando as cartelas de todos os jogadores, sem participar ativamente.
 - **Gerenciamento de Perfil:** Os jogadores podem atualizar seu nome de usuário e alterar sua senha.
-- **Recuperação de Erros:** Em caso de uma falha de conexão crítica, um botão "Reiniciar Sessão" permite que você volte facilmente para la tela de login.
+- **Recuperação de Erros:** Em caso de uma falha de conexão crítica, um botão "Reiniciar Sessão" permite que você volte facilmente para a tela de login.
 
 ### Para Administradores
 - **Painel de Administração:** Uma interface exclusiva para o administrador monitorar e controlar o jogo.
@@ -31,12 +31,9 @@ Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real cons
 - **Moderação de Chat:** Monitore e apague mensagens do chat do lobby diretamente do painel de administração. Cada exclusão é registrada em um log de auditoria para transparência.
 - **Gerenciamento de Jogadores:**
     - **Remover Cartela de Jogador:** Remova a última cartela de um jogador com uma justificação obrigatória. O jogador é reembolsado, e a ação fica registrada.
-    - **Dar/Remover Fichas:** Adicione ou remova fichas da conta de um jogador. A remoção requer uma justificação obrigatória e ambas as ações são registradas no log de auditoria.
-- **Configurações Globais:**
-    - **Configurações de Tempo:** Ajuste a duração dos contadores de tempo do lobby, sorteio e tela de vencedores.
-    - **Configuração de Bônus:** Defina os valores do "Bônus de Boas-Vindas" para novos jogadores e do "Bônus Diário" que pode ser resgatado a cada 24 horas.
 - **Histórico de Vendas:** Monitore um log em tempo real de todas as cartelas compradas na rodada, incluindo quem comprou, o ID da cartela e quando.
 - **Busca de Histórico e Chat:** Filtre rapidamente o histórico de vendas e as mensagens do chat por nome de jogador ou conteúdo da mensagem.
+- **Configurações de Tempo:** Ajuste a duração dos contadores de tempo do lobby, sorteio e tela de vencedores.
 - **Log de Ações do Administrador:** Um histórico detalhado de todas as ações administrativas (resetar jogo, pausar, remover cartela, etc.) é registrado, mostrando quem fez o quê, quando e com qual justificativa, garantindo total transparência.
 
 ---
@@ -56,10 +53,10 @@ Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real cons
 O objetivo é ser o primeiro jogador a completar uma cartela inteira (todos os 24 números). O sistema detecta o vencedor automaticamente.
 
 ### Como Jogar
-1.  **Crie uma Conta e Faça Login:** Use seu e-mail ou conta Google para acessar o jogo. Novos jogadores recebem um bônus de boas-vindas em Fichas (F).
+1.  **Crie uma Conta e Faça Login:** Use seu e-mail ou conta Google para acessar o jogo. Novos jogadores recebem um bônus de 100 Fichas (F).
 2.  **Acesse o Lobby:** Após o login, você estará no lobby. Aqui você pode conversar com outros jogadores e ver seu saldo de fichas.
 3.  **Compre Suas Cartelas:** Antes de a partida começar, clique no botão "Comprar Cartela (10 F)". Cada cartela custa 10 Fichas. Você pode comprar até 10 cartelas por rodada. As cartelas são válidas para uma única partida; você precisará comprar novas cartelas para cada nova rodada.
-4.  **Aguarde o Início:** O jogo não começa automaticamente. O administrador iniciará a partida manually. A exigência mínima é de **2 jogadores e 2 cartelas vendidas**.
+4.  **Aguarde o Início:** O jogo não começa automaticamente. O administrador iniciará a partida manualmente. A exigência mínima é de **2 jogadores e 2 cartelas vendidas**.
 5.  **Acompanhe e Marque:** Os números sorteados recebem um destaque especial na borda. Para uma experiência mais interativa, você pode clicar nesses números para marcá-los com uma animação, ajudando a visualizar seu progresso!
 6.  **Vitória Automática:** O primeiro jogador a ter todos os 24 números de uma cartela sorteados vence o jogo. O sistema detecta a vitória instantaneamente e encerra a partida, então não é preciso se preocupar em clicar em "BINGO!", apenas torça e acompanhe suas cartelas!
 7.  **Retorno ao Lobby:** Após a exibição dos vencedores, todos os jogadores retornam automaticamente ao lobby para se prepararem para a próxima rodada.
@@ -130,40 +127,3 @@ Este projeto não usa um empacotador como Vite ou Create React App, então não 
 2.  Clique com o botão direito no arquivo `index.html` na barra de explorador de arquivos.
 3.  Selecione **"Open with Live Server"**.
 4.  Seu navegador padrão abrirá com o jogo em execução. Agora você pode fazer login, e se o seu UID estiver configurado corretamente, o botão "Painel do Admin" aparecerá no lobby.
-
----
-
-## 🚀 Implantação com Cloudflare Pages
-
-Você pode implantar este projeto gratuitamente na internet usando o Cloudflare Pages. O processo é simples. Este projeto usa o Babel Standalone para transpilar o código TypeScript (TSX) diretamente no navegador, o que significa que **não é necessário um passo de compilação (build)** antes da implantação.
-
-**Nota:** O uso de transpilação no navegador é ótimo para prototipagem e projetos pequenos, mas pode não ser ideal para aplicações de produção em larga escala devido ao impacto na performance do carregamento inicial.
-
-### Pré-requisitos
-- Uma conta no [Cloudflare](https://dash.cloudflare.com/sign-up).
-- Seu projeto enviado para um repositório no [GitHub](https://github.com/) ou [GitLab](https://gitlab.com/).
-
-### Passo 1: Acesse o Painel do Cloudflare
-1.  Faça login na sua conta Cloudflare em `dash.cloudflare.com`.
-2.  No menu lateral esquerdo, navegue até **Workers & Pages**.
-
-### Passo 2: Crie uma Nova Aplicação "Pages"
-1.  Clique em **"Criar aplicação"** e selecione a aba **"Pages"**.
-2.  Clique em **"Conectar ao Git"**.
-3.  Conecte sua conta do GitHub ou GitLab e selecione o repositório do seu projeto de bingo.
-4.  Clique em **"Começar a configuração"**.
-
-### Passo 3: Configure a Implantação
-Esta é a parte mais importante. Como o nosso projeto não precisa ser compilado, a configuração é mínima.
-
-1.  **Nome do projeto:** Dê um nome ao seu projeto (ex: `noite-do-bingo`).
-2.  **Configurações de compilação:**
-    - **Framework preset (Predefinição de framework):** Selecione **`None`** na lista.
-    - **Build command (Comando de compilação):** Deixe este campo **em branco**.
-    - **Build output directory (Diretório de saída da compilação):** Deixe este campo como está (geralmente `/` ou o nome do repositório). O importante é que ele aponte para a raiz do seu projeto, onde o `index.html` está localizado.
-3.  **Variáveis de ambiente:** Não é necessário configurar variáveis de ambiente, pois as chaves do Firebase já estão configuradas no arquivo `firebase/config.tsx`.
-
-### Passo 4: Implante o Projeto
-1.  Clique em **"Salvar e Implantar"**.
-2.  O Cloudflare irá buscar seu código do Git e implantá-lo. O processo deve ser muito rápido.
-3.  Após a conclusão, você receberá um URL exclusivo no formato `nome-do-projeto.pages.dev`. Seu jogo de bingo agora está online e acessível para todos!

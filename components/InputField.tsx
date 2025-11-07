@@ -30,7 +30,7 @@ export const InputField: React.FC<InputFieldProps> = ({ id, label, type, value, 
           onChange={onChange}
           placeholder={placeholder}
           required
-          className={`w-full py-2.5 ${icon ? 'pl-10' : 'pl-4'} pr-4 bg-gray-700 border border-gray-500 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition duration-300 shadow-sm`}
+          className={`w-full py-2.5 ${icon ? 'pl-10' : 'pl-4'} pr-4 bg-gray-700 bg-opacity-50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition duration-300`}
         />
       </div>
     </div>

@@ -53,7 +53,6 @@ export default function App() {
   // Login State
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
-  const [loginSuccess, setLoginSuccess] = useState(false);
 
   // Register State
   const [registerUsername, setRegisterUsername] = useState('');
@@ -73,7 +72,6 @@ export default function App() {
     setError(null);
     setShowVerificationMessage(false);
     setNeedsVerification(null);
-    setLoginSuccess(false);
   };
 
 
@@ -89,15 +87,10 @@ export default function App() {
         const docSnap = await userDocRef.get();
         // FIX: Switched from v9 docSnap.exists() to v8 docSnap.exists
         if (!docSnap.exists) {
-            // Fetch welcome bonus from config, or default to 100
-            const configRef = db.collection('game_config').doc('bonuses');
-            const configDoc = await configRef.get();
-            const welcomeBonus = configDoc.exists ? configDoc.data()?.welcomeBonus || 100 : 100;
-
              const newUserData: UserData = {
                 displayName: user.displayName || 'BingoPlayer',
                 email: user.email!,
-                fichas: welcomeBonus,
+                fichas: 100 // Welcome bonus
             };
             // FIX: Switched from v9 setDoc(...) to v8 userDocRef.set(...)
             await userDocRef.set(newUserData);
@@ -160,7 +153,6 @@ export default function App() {
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setLoginSuccess(false);
     if (!loginEmail || !loginPassword) {
       setError('Por favor, preencha todos os campos.');
       return;
@@ -172,11 +164,6 @@ export default function App() {
         setNeedsVerification(userCredential.user);
         // FIX: Switched from v9 signOut(auth) to v8 auth.signOut()
         await auth.signOut();
-      } else {
-        setLoginSuccess(true);
-        setTimeout(() => {
-            // The onAuthStateChanged listener will handle the view change.
-        }, 1500);
       }
     } catch (err: any) {
       setError('E-mail ou senha inválidos.');
@@ -187,14 +174,9 @@ export default function App() {
     setError(null);
     setNeedsVerification(null);
     setShowVerificationMessage(false);
-    setLoginSuccess(false);
     try {
         // FIX: Switched from v9 signInWithPopup(auth, ...) to v8 auth.signInWithPopup(...)
         await auth.signInWithPopup(googleProvider);
-        setLoginSuccess(true);
-        setTimeout(() => {
-            // The onAuthStateChanged listener will handle the view change.
-        }, 1500);
     } catch (err: any) {
         if (err.code !== 'auth/popup-closed-by-user') {
             setError('Falha ao entrar com o Google. Por favor, tente novamente.');
@@ -215,11 +197,6 @@ export default function App() {
       return;
     }
     try {
-      // Fetch welcome bonus from config, or default to 100
-      const configRef = db.collection('game_config').doc('bonuses');
-      const configDoc = await configRef.get();
-      const welcomeBonus = configDoc.exists ? configDoc.data()?.welcomeBonus || 100 : 100;
-
       // FIX: Switched from v9 createUserWithEmailAndPassword(auth, ...) to v8 auth.createUserWithEmailAndPassword(...)
       const userCredential = await auth.createUserWithEmailAndPassword(registerEmail, registerPassword);
       const user = userCredential.user;
@@ -231,7 +208,7 @@ export default function App() {
         const newUserData: UserData = {
           displayName: registerUsername,
           email: registerEmail,
-          fichas: welcomeBonus,
+          fichas: 100 // Welcome bonus
         };
         // FIX: Switched from v9 setDoc(doc(db,...),...) to v8 db.collection(...).doc(...).set(...)
         await db.collection("users").doc(user.uid).set(newUserData);
@@ -305,19 +282,8 @@ export default function App() {
       </div>
   );
   
-  const renderAuthForms = () => {
-    if (loginSuccess) {
-        return (
-            <div className="w-full max-w-md bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl p-6 sm:p-8 text-center animate-pulse">
-                <h2 className="text-2xl sm:text-3xl font-bold text-green-400 mb-4">Login bem-sucedido!</h2>
-                <p className="text-gray-300">Preparando o lobby para você...</p>
-            </div>
-        );
-    }
-
-    return (
-      <div className="w-full max-w-md">
-        <div className="bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl overflow-hidden">
+  const renderAuthForms = () => (
+      <div className="w-full max-w-md bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl overflow-hidden">
             <div className="flex">
               <TabButton mode="login" currentMode={authMode} onClick={handleTabChange}>Entrar</TabButton>
               <TabButton mode="register" currentMode={authMode} onClick={handleTabChange}>Registrar</TabButton>
@@ -329,7 +295,7 @@ export default function App() {
                     <InputField id="login-email" label="E-mail" type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="Digite seu e-mail" icon={<EmailIcon />} />
                     <InputField id="login-password" label="Senha" type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="Digite sua senha" icon={<LockIcon />} />
                   </AuthForm>
-                  <div className="relative flex py-4 items-center">
+                  <div className="relative flex py-5 items-center">
                     <div className="flex-grow border-t border-gray-600"></div>
                     <span className="flex-shrink mx-4 text-gray-400 text-sm">Ou</span>
                     <div className="flex-grow border-t border-gray-600"></div>
@@ -350,9 +316,7 @@ export default function App() {
               {error && (<p className="mt-4 text-center text-red-400 bg-red-900 bg-opacity-50 p-3 rounded-lg">{error}</p>)}
             </div>
           </div>
-        </div>
-      );
-  };
+  );
 
   const renderContent = () => {
     if (loading || (currentUser && !userData)) {
@@ -387,16 +351,14 @@ export default function App() {
     <div className={appContainerClasses}>
         {viewMode === 'auth' && !showVerificationMessage && !needsVerification && (
             <div className="text-center mb-6 sm:mb-8">
-                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-white">NOITE DO BINGO</h1>
+                <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white">NOITE DO BINGO</h1>
                 <p className="mt-4 text-lg text-gray-300">Sua vez de ganhar!</p>
             </div>
         )}
         {renderContent()}
-        {viewMode === 'auth' && !showVerificationMessage && !needsVerification && (
-            <footer className="fixed bottom-0 left-0 right-0 p-4 text-center text-sm text-gray-400">
-                Versão: 1.0.1
-            </footer>
-        )}
+        <footer className="fixed bottom-0 right-0 p-2 text-xs text-gray-500">
+            Versão: 1.0.0
+        </footer>
     </div>
   );
 }

@@ -1,13 +1,9 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
-import firebase from 'firebase/compat/app';
+import React, { useState, useEffect, useMemo } from 'react';
+import type firebase from 'firebase/compat/app';
 import { db, serverTimestamp, increment, auth, EmailAuthProvider } from '../firebase/config';
 import type { GameState } from './BingoGame';
 import { TrashIcon } from './icons/TrashIcon';
 import { EyeIcon } from './icons/EyeIcon';
-import { calculateCardProgress } from '../utils/bingoUtils';
-
-// TODO: This should ideally be managed via roles in Firestore Security Rules or a central config.
-const ADMIN_UID = 'fKlSv57pZeSGPGiQG2z4NKAD9qi2';
 
 interface AdminPanelProps {
     user: firebase.User;
@@ -47,7 +43,6 @@ interface AdminLogItem {
 export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [gameState, setGameState] = useState<GameState | null>(null);
     const [onlinePlayersCount, setOnlinePlayersCount] = useState(0);
-    const [totalPlayerFichas, setTotalPlayerFichas] = useState(0);
     const [lobbyTime, setLobbyTime] = useState(30);
     const [drawTime, setDrawTime] = useState(8);
     const [endTime, setEndTime] = useState(15);
@@ -63,38 +58,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [adminLogSearch, setAdminLogSearch] = useState('');
     const [selectedCardModal, setSelectedCardModal] = useState<BingoCardData | null>(null);
 
-    // State for player connection status
-    const [playerStatuses, setPlayerStatuses] = useState<{ [uid: string]: 'online' | 'offline' }>({});
-    const lastSeenTimestampsRef = useRef<{ [uid: string]: number }>({});
-
-    // State for bonus configuration
-    const [welcomeBonus, setWelcomeBonus] = useState(100);
-    const [dailyBonus, setDailyBonus] = useState(10);
-    
-    // State for managing player fichas modal
-    const [isManageFichasModalOpen, setIsManageFichasModalOpen] = useState(false);
-    const [selectedPlayerForFichas, setSelectedPlayerForFichas] = useState<{ uid: string; displayName: string } | null>(null);
-    const [fichasAmount, setFichasAmount] = useState<number | string>('');
-    const [fichasAction, setFichasAction] = useState<'give' | 'remove'>('give');
-    const [fichasJustification, setFichasJustification] = useState('');
-    const [fichasError, setFichasError] = useState<string | null>(null);
-    const [isProcessingFichas, setIsProcessingFichas] = useState(false);
-    
-    // State for "Clear All Cards" modal
-    const [isClearCardsModalOpen, setIsClearCardsModalOpen] = useState(false);
-    const [clearCardsJustification, setClearCardsJustification] = useState('');
-    const [clearCardsConfirmationText, setClearCardsConfirmationText] = useState('');
-    const [clearCardsPassword, setClearCardsPassword] = useState('');
-    const [clearCardsError, setClearCardsError] = useState<string | null>(null);
+    // State for the "Clear All Cards" confirmation modal
+    const [isClearAllModalOpen, setIsClearAllModalOpen] = useState(false);
+    const [clearAllPassword, setClearAllPassword] = useState('');
+    const [clearAllJustification, setClearAllJustification] = useState('');
+    const [clearAllError, setClearAllError] = useState<string | null>(null);
     const [isClearingCards, setIsClearingCards] = useState(false);
-
 
     const gameDocRef = useMemo(() => db.collection('games').doc('active_game'), []);
     const purchaseHistoryCollectionRef = useMemo(() => db.collection('purchase_history'), []);
     const chatCollectionRef = useMemo(() => db.collection('chat'), []);
     const adminLogsCollectionRef = useMemo(() => db.collection('admin_logs'), []);
-    const bonusConfigRef = useMemo(() => db.collection('game_config').doc('bonuses'), []);
-
 
     useEffect(() => {
         const unsubscribe = gameDocRef.onSnapshot((doc) => {
@@ -123,23 +97,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AdminLogItem));
             setAdminLogs(logs);
         });
-        
-        const unsubBonusConfig = bonusConfigRef.onSnapshot(doc => {
-            if (doc.exists) {
-                const data = doc.data();
-                setWelcomeBonus(data?.welcomeBonus || 100);
-                setDailyBonus(data?.dailyBonus || 10);
-            }
-        });
 
         return () => { 
             unsubscribe();
             unsubHistory();
             unsubChat();
             unsubLogs();
-            unsubBonusConfig();
         };
-    }, [gameDocRef, purchaseHistoryCollectionRef, chatCollectionRef, adminLogsCollectionRef, bonusConfigRef]);
+    }, [gameDocRef, purchaseHistoryCollectionRef, chatCollectionRef, adminLogsCollectionRef]);
 
     useEffect(() => {
         const statusCollectionRef = db.collection('player_status');
@@ -160,202 +125,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
 
         return () => clearInterval(intervalId);
     }, []);
-    
-    // Effect to calculate and listen for changes in the total fichas of all players in the game.
-    useEffect(() => {
-        // Guard against running when there are no players
-        if (!gameState?.players || Object.keys(gameState.players).length === 0) {
-            setTotalPlayerFichas(0);
-            return;
-        }
-
-        const playerIds = Object.keys(gameState.players);
-        
-        // Firestore 'in' query has a limit (30 for onSnapshot), which is fine for this game's scale.
-        if (playerIds.length === 0) {
-            setTotalPlayerFichas(0);
-            return;
-        }
-
-        const unsubscribe = db.collection('users')
-            .where(firebase.firestore.FieldPath.documentId(), 'in', playerIds)
-            .onSnapshot(snapshot => {
-                let total = 0;
-                snapshot.forEach(doc => {
-                    // Safely access 'fichas' property
-                    total += doc.data()?.fichas || 0;
-                });
-                setTotalPlayerFichas(total);
-            }, err => {
-                console.error("Error fetching total player fichas:", err);
-                showMessage('error', 'Falha ao carregar o total de fichas dos jogadores.');
-                setTotalPlayerFichas(0); // Reset on error
-            });
-
-        return () => unsubscribe(); // Cleanup listener on component unmount or when players change
-    }, [gameState?.players]);
-
-    // Player status (presence) listener
-    useEffect(() => {
-        if (!gameState || !gameState.players || Object.keys(gameState.players).length === 0) {
-            setPlayerStatuses({});
-            return;
-        };
-
-        const playerIds = Object.keys(gameState.players);
-        const statusRef = db.collection('player_status');
-
-        const calculateAndUpdateStatuses = () => {
-            const now = Date.now();
-            const currentStatuses: { [uid: string]: 'online' | 'offline' } = {};
-            playerIds.forEach(id => {
-                const lastSeen = lastSeenTimestampsRef.current[id];
-                currentStatuses[id] = (lastSeen && (now - lastSeen < 30000)) ? 'online' : 'offline';
-            });
-            setPlayerStatuses(currentStatuses);
-        };
-
-        // Note: Firestore 'in' query has a limit (30 for onSnapshot).
-        // This should be sufficient for the scale of this game.
-        const unsub = statusRef
-            .where(firebase.firestore.FieldPath.documentId(), 'in', playerIds)
-            .onSnapshot((snapshot) => {
-                snapshot.forEach(doc => {
-                    const lastSeen = doc.data().lastSeen?.toMillis();
-                    if (lastSeen) {
-                       lastSeenTimestampsRef.current[doc.id] = lastSeen;
-                    }
-                });
-                calculateAndUpdateStatuses();
-            });
-
-        const interval = setInterval(calculateAndUpdateStatuses, 10000);
-
-        return () => {
-            unsub();
-            clearInterval(interval);
-        };
-    }, [gameState?.players]);
-
-    // Countdown for lobby before game starts
-    useEffect(() => {
-        if (user.uid !== ADMIN_UID || !gameState || gameState.status !== 'starting') return;
-
-        // Ensure only the designated host runs the countdown.
-        if (gameState.host !== user.uid) {
-            return;
-        }
-
-        if (gameState.countdown > 0) {
-            const timer = setTimeout(() => {
-                gameDocRef.update({ countdown: increment(-1) }).catch(() => {});
-            }, 1000);
-            return () => clearTimeout(timer);
-        } else {
-            // Countdown finished, start the game
-            gameDocRef.update({
-                status: 'running',
-                countdown: gameState.drawIntervalDuration,
-            }).catch(err => {
-                console.error("Failed to transition to running state:", err);
-                showMessage('error', 'Falha ao iniciar o jogo após contagem.');
-            });
-        }
-    }, [gameState, user.uid, gameDocRef]);
-
-    // Main Game Loop - controlled by the Admin Panel
-    useEffect(() => {
-        if (user.uid !== ADMIN_UID || !gameState) return;
-
-        // Ensure only the designated host runs the game loop.
-        if (gameState.host !== user.uid) {
-            return;
-        }
-
-        if (gameState.status === 'running') {
-            const drawInterval = (gameState.drawIntervalDuration || 8) * 1000;
-
-            const gameLoop = setTimeout(async () => {
-                try {
-                    await db.runTransaction(async (transaction) => {
-                        const gameDocInTransaction = await transaction.get(gameDocRef);
-                        if (!gameDocInTransaction.exists) throw new Error("O jogo não foi encontrado.");
-                        
-                        const currentGameState = gameDocInTransaction.data() as GameState;
-                        if (currentGameState.status !== 'running') return; // Stop if game state changed
-
-                        const availableNumbers = Array.from({ length: 60 }, (_, i) => i + 1)
-                            .filter(num => !currentGameState.drawnNumbers.includes(num));
-
-                        if (availableNumbers.length === 0) {
-                            transaction.update(gameDocRef, { status: 'ended', winners: [] });
-                            return;
-                        }
-
-                        const newNumber = availableNumbers[Math.floor(Math.random() * availableNumbers.length)];
-                        const updatedDrawnNumbers = [...currentGameState.drawnNumbers, newNumber];
-                        
-                        const playerIds = Object.keys(currentGameState.players || {});
-                        const winners: { uid: string, displayName: string, card: number[] }[] = [];
-                        const updatedPlayers = { ...currentGameState.players };
-
-                        for (const uid of playerIds) {
-                            const playerCardsRef = db.collection('player_cards').doc(uid).collection('cards').doc('active_game');
-                            const playerCardsDoc = await transaction.get(playerCardsRef);
-                            
-                            if (playerCardsDoc.exists) {
-                                const cards = playerCardsDoc.data()!.cards as BingoCardData[];
-                                let minProgress = 24;
-
-                                for (const card of cards) {
-                                    const { isBingo, numbersToWin } = calculateCardProgress(card.numbers, updatedDrawnNumbers);
-                                    if (numbersToWin < minProgress) minProgress = numbersToWin;
-                                    if (isBingo) {
-                                        winners.push({ uid, displayName: currentGameState.players[uid].displayName, card: card.numbers });
-                                    }
-                                }
-                                updatedPlayers[uid] = { ...updatedPlayers[uid], progress: minProgress };
-                            }
-                        }
-
-                        if (winners.length > 0) {
-                            const prizePerWinner = Math.floor(currentGameState.prizePool / winners.length);
-                            for (const winner of winners) {
-                                const userRef = db.collection('users').doc(winner.uid);
-                                transaction.update(userRef, { fichas: increment(prizePerWinner) });
-                            }
-                            transaction.update(gameDocRef, {
-                                status: 'ended',
-                                drawnNumbers: updatedDrawnNumbers,
-                                winners: winners,
-                                players: updatedPlayers
-                            });
-                        } else {
-                            transaction.update(gameDocRef, {
-                                drawnNumbers: updatedDrawnNumbers,
-                                countdown: currentGameState.drawIntervalDuration || 8,
-                                players: updatedPlayers
-                            });
-                        }
-                    });
-                } catch (error) {
-                    console.error("Erro na transação do ciclo do jogo:", error);
-                    showMessage('error', 'Erro na transação de verificação do vencedor.');
-                    await gameDocRef.update({ status: 'paused', pauseReason: 'Erro crítico no servidor.' });
-                }
-            }, drawInterval);
-
-            const countdownTimer = setInterval(() => {
-                gameDocRef.update({ countdown: increment(-1) }).catch(() => {});
-            }, 1000);
-
-            return () => {
-                clearTimeout(gameLoop);
-                clearInterval(countdownTimer);
-            };
-        }
-    }, [gameState, user.uid, gameDocRef]);
-
 
     const filteredPurchaseHistory = useMemo(() => {
         if (!purchaseHistorySearch) return purchaseHistory;
@@ -529,660 +298,604 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             showMessage('error', 'Falha ao salvar configurações.');
         }
     };
-    
-    const handleSaveBonuses = async () => {
-        try {
-            const bonusData = {
-                welcomeBonus: Number(welcomeBonus),
-                dailyBonus: Number(dailyBonus),
-            };
-            await bonusConfigRef.set(bonusData, { merge: true });
 
-            await db.collection('admin_logs').add({
-                adminUid: user.uid,
-                adminName: user.displayName,
-                action: 'save_bonus_settings',
-                details: bonusData,
-                timestamp: serverTimestamp(),
-            });
-
-            showMessage('success', 'Configurações de bônus salvas com sucesso!');
-        } catch (error) {
-            console.error("Failed to save bonus settings:", error);
-            showMessage('error', 'Falha ao salvar configurações de bônus.');
+    const { totalPlayers, totalCards } = useMemo(() => {
+        if (!gameState?.players) {
+            return { totalPlayers: 0, totalCards: 0 };
         }
-    };
-    
-    const openManageFichasModal = (uid: string, displayName: string) => {
-        setSelectedPlayerForFichas({ uid, displayName });
-        setFichasAction('give');
-        setFichasAmount('');
-        setFichasJustification('');
-        setFichasError(null);
-        setIsManageFichasModalOpen(true);
-    };
+        const playersArray = Object.values(gameState.players) as { cardCount: number }[];
+        const cardCount = playersArray.reduce((acc, player) => acc + (player.cardCount || 0), 0);
+        return { totalPlayers: playersArray.length, totalCards: cardCount };
+    }, [gameState?.players]);
 
-    const handleManageFichasSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setFichasError(null);
+    const canForceStart = gameState?.status === 'waiting' && totalPlayers >= 2 && totalCards >= 2;
 
-        if (!selectedPlayerForFichas || !fichasAmount || Number(fichasAmount) <= 0) {
-            setFichasError('Por favor, insira um valor de fichas válido.');
-            return;
-        }
-        if (fichasAction === 'remove' && !fichasJustification.trim()) {
-            setFichasError('A justificação é obrigatória para remover fichas.');
-            return;
-        }
-
-        setIsProcessingFichas(true);
-        try {
-            const amount = Number(fichasAmount);
-            const userDocRef = db.collection('users').doc(selectedPlayerForFichas.uid);
-            const adminLogRef = db.collection('admin_logs').doc();
-
-            const batch = db.batch();
-
-            batch.update(userDocRef, {
-                fichas: increment(fichasAction === 'give' ? amount : -amount)
-            });
-
-            batch.set(adminLogRef, {
-                adminUid: user.uid,
-                adminName: user.displayName || 'Admin',
-                action: fichasAction === 'give' ? 'give_fichas' : 'remove_fichas',
-                details: {
-                    targetUid: selectedPlayerForFichas.uid,
-                    targetName: selectedPlayerForFichas.displayName,
-                    amount: amount
-                },
-                justification: fichasAction === 'remove' ? fichasJustification : null,
-                timestamp: serverTimestamp(),
-            });
-
-            await batch.commit();
-            showMessage('success', `Fichas ${fichasAction === 'give' ? 'dadas' : 'removidas'} com sucesso!`);
-            setIsManageFichasModalOpen(false);
-
-        } catch (error) {
-            console.error("Error managing fichas:", error);
-            setFichasError('Falha ao atualizar as fichas do jogador.');
-        } finally {
-            setIsProcessingFichas(false);
-        }
-    };
-    
     const handleForceStart = async () => {
-        const adminUser = auth.currentUser;
-        if (!adminUser || !gameState) return;
-    
-        const playerCount = Object.keys(gameState.players || {}).length;
-        const prizePool = gameState.prizePool || 0;
-    
-        if (playerCount < 2 || prizePool === 0) {
-            let confirmationMessage = "Atenção:\n\n";
-            if (playerCount < 2) {
-                confirmationMessage += `- Há menos de 2 jogadores na partida.\n`;
+        if (canForceStart) {
+            try {
+                await gameDocRef.update({ status: 'running', countdown: gameState!.drawIntervalDuration || 5 });
+                
+                await db.collection('admin_logs').add({
+                    adminUid: user.uid,
+                    adminName: user.displayName,
+                    action: 'force_start_game',
+                    timestamp: serverTimestamp(),
+                });
+
+                showMessage('success', 'Jogo iniciado forçadamente!');
+            } catch (error) {
+                showMessage('error', 'Falha ao iniciar o jogo.');
             }
-            if (prizePool === 0) {
-                confirmationMessage += `- O prêmio acumulado é 0 F.\n`;
-            }
-            confirmationMessage += "\nDeseja mesmo assim forçar o início do jogo?";
-    
-            if (!window.confirm(confirmationMessage)) {
-                return; // Admin cancelled the action
-            }
-        }
-    
-        try {
-            await gameDocRef.update({
-                status: 'starting',
-                host: adminUser.uid,
-                countdown: gameState.lobbyCountdownDuration,
-            });
-    
-            const justification = (playerCount < 2 || prizePool === 0) 
-                ? `Início forçado com ${playerCount} jogadores e prêmio de ${prizePool} F.` 
-                : null;
-    
-            await db.collection('admin_logs').add({
-                adminUid: adminUser.uid,
-                adminName: user.displayName,
-                action: 'force_start_game',
-                details: {
-                    playerCountAtStart: playerCount,
-                    prizePoolAtStart: prizePool,
-                },
-                justification: justification,
-                timestamp: serverTimestamp(),
-            });
-    
-            showMessage('success', 'Contagem regressiva do jogo iniciada!');
-        } catch (error) {
-            console.error("Error forcing game start:", error);
-            showMessage('error', 'Falha ao iniciar contagem regressiva.');
+        } else {
+            showMessage('error', 'O jogo requer no mínimo 2 jogadores e 2 cartelas vendidas para iniciar.');
         }
     };
-
+    
     const handleResetGame = async () => {
-        const adminUser = auth.currentUser;
-        if (!adminUser || !gameState) return;
-
-        if (window.confirm('Tem certeza que deseja resetar o jogo? Esta ação não pode ser desfeita.')) {
-            try {
+        if (window.confirm('Tem certeza que deseja resetar o jogo? Isso limpará todos os jogadores e cartelas.')) {
+            if (!gameState) {
+                showMessage('error', 'Estado do jogo não encontrado.');
+                return;
+            }
+             try {
+                const announcement = gameState.winners.length ? `Último(s) vencedor(es): ${gameState.winners.map(w => w.displayName).join(', ')}` : "Jogo resetado pelo administrador.";
                 const batch = db.batch();
-                
-                const announcement = gameState.winners.length > 0
-                    ? `Último(s) vencedor(es): ${gameState.winners.map(w => w.displayName).join(', ')}`
-                    : "Jogo resetado pelo administrador.";
+                const adminLogRef = db.collection('admin_logs').doc();
 
-                batch.update(gameDocRef, {
-                    status: 'waiting',
-                    drawnNumbers: [],
-                    prizePool: 0,
-                    winners: [],
-                    countdown: gameState.lobbyCountdownDuration,
+
+                // 1. Save game to history if it has ended
+                if (gameState.status === 'ended') {
+                    const historyRef = db.collection('game_history').doc();
+                    batch.set(historyRef, {
+                        winners: gameState.winners,
+                        drawnNumbers: gameState.drawnNumbers,
+                        prizePool: gameState.prizePool,
+                        completedAt: serverTimestamp()
+                    });
+                }
+                
+                // 2. Delete all active cards from participating players
+                const playerIds = Object.keys(gameState.players || {});
+                if (playerIds.length > 0) {
+                    for (const uid of playerIds) {
+                        const playerCardsRef = db.collection('player_cards').doc(uid).collection('cards').doc('active_game');
+                        batch.delete(playerCardsRef);
+                    }
+                }
+
+                // 3. Reset the main game state document
+                batch.update(gameDocRef, { 
+                    status: 'waiting', 
+                    drawnNumbers: [], 
+                    prizePool: 0, 
+                    winners: [], 
+                    countdown: gameState.lobbyCountdownDuration || 15,
                     lastWinnerAnnouncement: announcement,
                     players: {},
                     pauseReason: ''
                 });
 
-                const playerIds = Object.keys(gameState.players || {});
-                for (const uid of playerIds) {
-                    const playerCardsRef = db.collection('player_cards').doc(uid).collection('cards').doc('active_game');
-                    batch.delete(playerCardsRef);
-                }
-                
-                const purchaseHistoryCollectionRef = db.collection('purchase_history');
+                // 4. Clear the purchase history for the new round
                 const purchaseHistorySnapshot = await purchaseHistoryCollectionRef.get();
                 purchaseHistorySnapshot.forEach(doc => {
                     batch.delete(doc.ref);
                 });
 
-                const adminLogRef = db.collection('admin_logs').doc();
+                // 5. Log the admin action
                 batch.set(adminLogRef, {
-                    adminUid: adminUser.uid,
-                    adminName: adminUser.displayName,
+                    adminUid: user.uid,
+                    adminName: user.displayName,
                     action: 'reset_game',
                     timestamp: serverTimestamp(),
                 });
-
+                
                 await batch.commit();
-                showMessage('success', 'Jogo resetado com sucesso.');
-
+                showMessage('success', 'Jogo resetado com sucesso!');
             } catch (error) {
-                console.error("Error resetting game:", error);
                 showMessage('error', 'Falha ao resetar o jogo.');
+                console.error(error);
             }
         }
     };
-    
-    const handleConfirmClearAllCards = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setClearCardsError(null);
 
-        if (!clearCardsJustification.trim()) {
-            setClearCardsError('A justificação é obrigatória para esta ação.');
-            return;
-        }
+    const handleTogglePause = async () => {
+        if (!gameState) return;
+        const isPausing = gameState.status === 'running';
+        const reason = isPausing ? window.prompt('Por favor, informe o motivo da pausa:', 'Pausa técnica') : '';
 
-        const adminUser = auth.currentUser;
-        if (!adminUser || !gameState) {
-            setClearCardsError('Administrador ou estado do jogo não encontrado.');
-            return;
-        }
-
-        const isEmailProvider = adminUser.providerData.some(p => p.providerId === 'password');
-
-        // Re-authentication step for email/password admins
-        if (isEmailProvider) {
-            if (!clearCardsPassword) {
-                setClearCardsError('Por favor, insira sua senha para confirmar.');
-                return;
-            }
-            try {
-                // Ensure email is available before creating credential
-                if (!adminUser.email) {
-                    throw new Error("E-mail do administrador não encontrado para reautenticação.");
-                }
-                const credential = EmailAuthProvider.credential(adminUser.email, clearCardsPassword);
-                await adminUser.reauthenticateWithCredential(credential);
-            } catch (error) {
-                console.error("Re-authentication failed:", error);
-                setClearCardsError('Senha incorreta. Ação cancelada.');
-                return;
-            }
+        if (isPausing && !reason) {
+            return; // Don't pause if no reason is given
         }
         
-        setIsClearingCards(true);
-
         try {
-            const batch = db.batch();
-            const playerIds = Object.keys(gameState.players || {});
-            
-            if (playerIds.length === 0) {
-                // This is not an error, just means there's nothing to do.
-                showMessage('success', 'Nenhum jogador tinha cartelas para limpar.');
-                setIsClearCardsModalOpen(false);
-                setClearCardsJustification('');
-                setClearCardsConfirmationText('');
-                setClearCardsPassword('');
-                setIsClearingCards(false);
-                return;
-            }
-
-            for (const uid of playerIds) {
-                const player = gameState.players[uid];
-                const cardCount = player.cardCount || 0;
-                
-                if (cardCount > 0) {
-                    const refundAmount = cardCount * 10;
-                    const userRef = db.collection('users').doc(uid);
-                    batch.update(userRef, { fichas: increment(refundAmount) });
-                }
-                
-                const playerCardsRef = db.collection('player_cards').doc(uid).collection('cards').doc('active_game');
-                batch.delete(playerCardsRef);
+            if (isPausing) {
+                await gameDocRef.update({ status: 'paused', pauseReason: reason });
+            } else { // is resuming from 'paused'
+                await gameDocRef.update({ 
+                    status: 'running', 
+                    pauseReason: '', 
+                    countdown: gameState.drawIntervalDuration || 5 
+                });
             }
             
-            const purchaseHistoryCollectionRef = db.collection('purchase_history');
-            const purchaseHistorySnapshot = await purchaseHistoryCollectionRef.get();
-            purchaseHistorySnapshot.forEach(doc => {
-                batch.delete(doc.ref);
-            });
-
-            batch.update(gameDocRef, {
-                prizePool: 0,
-                players: {},
-            });
-
-            const adminLogRef = db.collection('admin_logs').doc();
-            batch.set(adminLogRef, {
-                adminUid: adminUser.uid,
-                adminName: adminUser.displayName,
-                action: 'clear_all_cards',
-                justification: clearCardsJustification,
+            await db.collection('admin_logs').add({
+                adminUid: user.uid,
+                adminName: user.displayName,
+                action: isPausing ? 'pause_game' : 'resume_game',
+                details: { reason: isPausing ? reason : null },
                 timestamp: serverTimestamp(),
             });
 
-            await batch.commit();
-            
-            showMessage('success', 'Todas as cartelas foram limpas e os jogadores reembolsados.');
-            setIsClearCardsModalOpen(false);
-            setClearCardsJustification('');
-            setClearCardsConfirmationText('');
-            setClearCardsPassword('');
+            showMessage('success', `Jogo ${isPausing ? 'pausado' : 'retomado'} com sucesso.`);
 
-        } catch (error: any) {
-            console.error("Error clearing all cards:", error);
-            setClearCardsError(error.message || 'Falha ao limpar as cartelas.');
+        } catch (error) {
+            showMessage('error', `Falha ao ${isPausing ? 'pausar' : 'retomar'} o jogo.`);
+        }
+    };
+    
+    const handleClearAllCardsClick = () => {
+        if (!gameState || Object.keys(gameState.players).length === 0) {
+            showMessage('error', 'Não há jogadores com cartelas para limpar.');
+            return;
+        }
+    
+        const isEmailProvider = user.providerData.some(p => p.providerId === 'password');
+        if (!isEmailProvider) {
+            showMessage('error', 'A verificação de senha só está disponível para administradores com login via e-mail/senha.');
+            return;
+        }
+        setIsClearAllModalOpen(true);
+    };
+
+    const confirmAndExecuteClearAllCards = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setClearAllError(null);
+        setIsClearingCards(true);
+    
+        if (!clearAllPassword) {
+            setClearAllError('A senha é obrigatória.');
+            setIsClearingCards(false);
+            return;
+        }
+        if (!clearAllJustification || clearAllJustification.trim() === '') {
+            setClearAllError('A justificação é obrigatória.');
+            setIsClearingCards(false);
+            return;
+        }
+        if (!user.email || !auth.currentUser) {
+            setClearAllError('Não foi possível verificar o e-mail do administrador.');
+            setIsClearingCards(false);
+            return;
+        }
+    
+        try {
+            const credential = EmailAuthProvider.credential(user.email, clearAllPassword);
+            await auth.currentUser.reauthenticateWithCredential(credential);
+    
+            await db.runTransaction(async (transaction) => {
+                const gameDoc = await transaction.get(gameDocRef);
+                if (!gameDoc.exists) throw new Error("Jogo não encontrado.");
+                
+                const gameData = gameDoc.data() as GameState;
+                const players = gameData.players;
+                const playerIds = Object.keys(players);
+    
+                if (playerIds.length === 0) return;
+    
+                for (const uid of playerIds) {
+                    const playerInfo = players[uid];
+                    const userRef = db.collection('users').doc(uid);
+                    const cardsRef = db.collection('player_cards').doc(uid).collection('cards').doc('active_game');
+    
+                    const userDoc = await transaction.get(userRef);
+                    const cardsDoc = await transaction.get(cardsRef);
+    
+                    if (userDoc.exists) {
+                        const refundAmount = (playerInfo.cardCount || 0) * 10;
+                        if (refundAmount > 0) {
+                            transaction.update(userRef, { fichas: increment(refundAmount) });
+                        }
+                    }
+                    if (cardsDoc.exists) {
+                        transaction.update(cardsRef, { cards: [] });
+                    }
+                }
+    
+                transaction.update(gameDocRef, {
+                    players: {},
+                    prizePool: 0,
+                });
+    
+                const adminLogRef = db.collection('admin_logs').doc();
+                transaction.set(adminLogRef, {
+                    adminUid: user.uid,
+                    adminName: user.displayName,
+                    action: 'clear_all_cards',
+                    justification: clearAllJustification,
+                    timestamp: serverTimestamp(),
+                });
+            });
+    
+            showMessage('success', 'Todas as cartelas foram limpas e os jogadores reembolsados.');
+            setIsClearAllModalOpen(false);
+            setClearAllPassword('');
+            setClearAllJustification('');
+    
+        } catch (err: any) {
+            if (err.code === 'auth/wrong-password') {
+                setClearAllError('Senha incorreta. Ação cancelada.');
+            } else {
+                console.error("Erro ao limpar todas as cartelas:", err);
+                setClearAllError(err.message || 'Falha ao limpar as cartelas.');
+            }
         } finally {
             setIsClearingCards(false);
         }
     };
 
-    const handlePauseGame = async () => {
-        const adminUser = auth.currentUser;
-        if (!adminUser || !gameState) return;
 
-        const reason = window.prompt("Digite o motivo da pausa (opcional):");
-        try {
-            await gameDocRef.update({
-                status: 'paused',
-                pauseReason: reason || 'Pausado pelo administrador',
-            });
-            await db.collection('admin_logs').add({
-                adminUid: adminUser.uid,
-                adminName: adminUser.displayName,
-                action: 'pause_game',
-                justification: reason,
-                timestamp: serverTimestamp(),
-            });
-            showMessage('success', 'Jogo pausado.');
-        } catch (error) {
-            console.error("Error pausing game:", error);
-            showMessage('error', 'Falha ao pausar o jogo.');
-        }
-    };
-    
-    const handleResumeGame = async () => {
-        const adminUser = auth.currentUser;
-        if (!adminUser) return;
-        try {
-            await gameDocRef.update({
-                status: 'running',
-                pauseReason: '',
-                host: adminUser.uid,
-            });
-            await db.collection('admin_logs').add({
-                adminUid: adminUser.uid,
-                adminName: adminUser.displayName,
-                action: 'resume_game',
-                timestamp: serverTimestamp(),
-            });
-            showMessage('success', 'Jogo retomado.');
-        } catch (error) {
-            console.error("Error resuming game:", error);
-            showMessage('error', 'Falha ao retomar o jogo.');
-        }
-    };
-    
-    const sortedPlayers = useMemo(() => {
-        if (!gameState || !gameState.players) return [];
-        return (Object.entries(gameState.players) as [string, { displayName: string, cardCount: number, progress?: number }][])
-            .sort(([, a], [, b]) => (a.progress ?? 99) - (b.progress ?? 99));
-    }, [gameState]);
-
-
-    if (user.uid !== ADMIN_UID) {
-        return (
-            <div className="text-center p-8">
-                <h2 className="text-2xl text-red-500">Acesso Negado</h2>
-                <p>Você não tem permissão para visualizar esta página.</p>
-                <button onClick={onBack} className="mt-4 py-2 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg">Voltar para o Lobby</button>
-            </div>
-        );
-    }
-    
-    if (!gameState) {
-        return <div className="text-center text-xl">Carregando Painel do Admin...</div>;
-    }
-
-    const renderStatCard = (title: string, value: string | number, colorClass: string) => (
-        <div className={`p-4 rounded-lg shadow-md bg-gray-800 ${colorClass}`}>
-            <h3 className="text-sm font-semibold text-gray-300 uppercase">{title}</h3>
-            <p className="text-3xl font-bold">{value}</p>
-        </div>
-    );
-
-    const isEmailProvider = user.providerData.some(p => p.providerId === 'password');
-    
     return (
-        <div className="bg-gray-900 text-white w-full max-w-7xl mx-auto p-4 rounded-lg shadow-2xl">
+        <div className="w-full max-w-7xl bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl p-8 text-white">
+            <div className="flex items-center justify-between mb-6">
+                <h2 className="text-3xl font-bold">Painel de Administração</h2>
+                <button onClick={onBack} className="text-gray-300 hover:text-white">&larr; Voltar para o Lobby</button>
+            </div>
+
             {message && (
-                <div className={`fixed top-5 right-5 p-4 rounded-lg shadow-lg z-50 ${message.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}>
+                <div className={`mb-4 text-center p-3 rounded-lg ${message.type === 'success' ? 'bg-green-800 text-green-200' : 'bg-red-800 text-red-200'}`}>
                     {message.text}
                 </div>
             )}
-            {selectedCardModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50" onClick={() => setSelectedCardModal(null)}>
-                    <div className="bg-gray-800 p-4 rounded-lg" onClick={(e) => e.stopPropagation()}>
-                        <h3 className="text-center font-bold mb-2">Cartela</h3>
-                         <div className="grid grid-cols-5 gap-1">
-                            {selectedCardModal.numbers.map((num, index) => (
-                                <div key={index} className={`w-12 h-12 flex items-center justify-center font-bold rounded ${gameState.drawnNumbers.includes(num) ? 'bg-green-500' : 'bg-gray-600'}`}>
-                                    {index === 12 ? '★' : num}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-            )}
-            
-            {isManageFichasModalOpen && selectedPlayerForFichas && (
-                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
-                    <div className="bg-gray-800 p-6 rounded-lg shadow-2xl w-full max-w-md">
-                        <h2 className="text-2xl font-bold mb-4">Gerenciar Fichas de {selectedPlayerForFichas.displayName}</h2>
-                        <form onSubmit={handleManageFichasSubmit}>
-                            <div className="mb-4">
-                                <label className="block text-sm font-medium text-gray-300 mb-1">Ação</label>
-                                <select value={fichasAction} onChange={(e) => setFichasAction(e.target.value as 'give' | 'remove')} className="w-full py-2 px-3 bg-gray-700 border border-gray-600 rounded-lg">
-                                    <option value="give">Dar Fichas</option>
-                                    <option value="remove">Remover Fichas</option>
-                                </select>
-                            </div>
-                            <div className="mb-4">
-                                <label className="block text-sm font-medium text-gray-300 mb-1">Quantidade</label>
-                                <input type="number" value={fichasAmount} onChange={(e) => setFichasAmount(e.target.value)} min="1" className="w-full py-2 px-3 bg-gray-700 border border-gray-600 rounded-lg" placeholder="Ex: 50" />
-                            </div>
-                            {fichasAction === 'remove' && (
-                                <div className="mb-4">
-                                    <label className="block text-sm font-medium text-gray-300 mb-1">Justificação (Obrigatória)</label>
-                                    <textarea value={fichasJustification} onChange={(e) => setFichasJustification(e.target.value)} rows={3} className="w-full py-2 px-3 bg-gray-700 border border-gray-600 rounded-lg" placeholder="Ex: Abuso de comportamento"></textarea>
-                                </div>
-                            )}
-                            {fichasError && <p className="text-red-400 mb-4">{fichasError}</p>}
-                            <div className="flex justify-end gap-4">
-                                <button type="button" onClick={() => setIsManageFichasModalOpen(false)} className="py-2 px-4 bg-gray-600 hover:bg-gray-700 rounded-lg">Cancelar</button>
-                                <button type="submit" disabled={isProcessingFichas} className="py-2 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg disabled:bg-gray-500">
-                                    {isProcessingFichas ? 'Processando...' : 'Confirmar'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-            
-            {isClearCardsModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
-                    <div className="bg-gray-800 p-6 rounded-lg shadow-2xl w-full max-w-md border-2 border-red-500">
-                        <div className="flex items-center mb-4">
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-red-500 mr-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-                            <h2 className="text-2xl font-bold text-red-400">Confirmar Ação Crítica</h2>
-                        </div>
-                        <p className="text-gray-300 mb-4">
-                            Esta ação irá <strong className="text-yellow-400">remover TODAS as cartelas de TODOS os jogadores</strong> e reembolsá-los integralmente. 
-                            O prêmio acumulado será zerado. Esta ação é <strong className="text-red-500 uppercase">irreversível</strong>.
-                        </p>
-                        <form onSubmit={handleConfirmClearAllCards}>
-                            <div className="mb-4">
-                                <label htmlFor="clear-justification" className="block text-sm font-medium text-gray-300 mb-1">Justificação (Obrigatória)</label>
-                                <textarea 
-                                    id="clear-justification"
-                                    value={clearCardsJustification} 
-                                    onChange={(e) => setClearCardsJustification(e.target.value)} 
-                                    rows={3} 
-                                    className="w-full py-2 px-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500" 
-                                    placeholder="Ex: Fim do evento, reset da rodada."
-                                />
-                            </div>
-                            {isEmailProvider && (
-                                <div className="mb-4">
-                                    <label htmlFor="clear-password" className="block text-sm font-medium text-gray-300 mb-1">Sua Senha de Admin (Obrigatória)</label>
-                                    <input
-                                        id="clear-password"
-                                        type="password"
-                                        value={clearCardsPassword}
-                                        onChange={(e) => setClearCardsPassword(e.target.value)}
-                                        className="w-full py-2 px-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500"
-                                        placeholder="Confirme sua identidade"
-                                    />
-                                </div>
-                            )}
-                            <div className="mb-4 bg-gray-900 p-4 rounded-lg border border-yellow-600">
-                                <label htmlFor="clear-confirmation-text" className="block text-sm font-medium text-gray-300 mb-2 text-center">
-                                    Para confirmar, digite <strong className="text-yellow-400 tracking-widest">CONFIRMAR</strong> no campo abaixo.
-                                </label>
-                                <input
-                                    id="clear-confirmation-text"
-                                    type="text"
-                                    value={clearCardsConfirmationText}
-                                    onChange={(e) => setClearCardsConfirmationText(e.target.value)}
-                                    className="w-full py-2 px-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500 text-center uppercase"
-                                />
-                            </div>
-                            {clearCardsError && <p className="text-red-400 mb-4">{clearCardsError}</p>}
-                            <div className="flex justify-end gap-4">
-                                <button type="button" onClick={() => setIsClearCardsModalOpen(false)} className="py-2 px-4 bg-gray-600 hover:bg-gray-700 rounded-lg">Cancelar</button>
-                                <button 
-                                    type="submit" 
-                                    disabled={isClearingCards || clearCardsConfirmationText !== 'CONFIRMAR' || !clearCardsJustification.trim() || (isEmailProvider && !clearCardsPassword)} 
-                                    className="py-2 px-4 bg-red-600 hover:bg-red-700 rounded-lg disabled:bg-gray-500 disabled:cursor-not-allowed"
-                                >
-                                    {isClearingCards ? 'Limpando...' : 'Confirmar e Limpar Tudo'}
-                                </button>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
 
-            <header className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold text-purple-400">Painel do Administrador</h1>
-                <button onClick={onBack} className="py-2 px-4 bg-gray-700 hover:bg-gray-800 rounded-lg font-semibold">&larr; Voltar para o Lobby</button>
-            </header>
-
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-                {renderStatCard('Status do Jogo', gameState.status.toUpperCase(), 'border-l-4 border-blue-500')}
-                {renderStatCard('Jogadores Online', onlinePlayersCount, 'border-l-4 border-green-500')}
-                {renderStatCard('Jogadores na Partida', Object.keys(gameState.players).length, 'border-l-4 border-teal-500')}
-                {renderStatCard('Fichas em Jogo', totalPlayerFichas, 'border-l-4 border-pink-500')}
-                {renderStatCard('Prêmio Acumulado', `${gameState.prizePool} F`, 'border-l-4 border-yellow-500')}
+            {/* Top Stats Row */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6 text-center">
+                <div className="bg-gray-700 p-4 rounded-lg">
+                    <p className="text-sm text-gray-400">Status do Jogo</p>
+                    <p className="text-2xl font-bold capitalize">{gameState?.status || 'N/A'}</p>
+                </div>
+                 <div className="bg-gray-700 p-4 rounded-lg">
+                    <p className="text-sm text-gray-400">Bolas Sorteadas</p>
+                    <p className="text-2xl font-bold">{gameState?.drawnNumbers.length || 0} / 60</p>
+                </div>
+                <div className="bg-gray-700 p-4 rounded-lg">
+                    <p className="text-sm text-gray-400">Jogadores Online</p>
+                    <p className="text-2xl font-bold">{onlinePlayersCount}</p>
+                </div>
+                <div className="bg-gray-700 p-4 rounded-lg">
+                    <p className="text-sm text-gray-400">Prêmio Acumulado</p>
+                    <p className="text-2xl font-bold">{gameState?.prizePool || 0} F</p>
+                </div>
             </div>
             
+            {/* Main 3-Column Content Area */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {/* Coluna 1: Controles e Configurações */}
-                <div className="bg-gray-800 p-4 rounded-lg space-y-6">
-                    <div>
-                        <h2 className="text-xl font-bold mb-2">Controles do Jogo</h2>
+                <div className="flex flex-col gap-6">
+                    <div className="bg-gray-900 p-4 rounded-lg">
+                         <h3 className="text-xl font-semibold mb-4 text-center">Controles do Jogo</h3>
                          <div className="space-y-2">
-                             <button onClick={handleForceStart} disabled={gameState.status !== 'waiting'} className="w-full py-2 px-4 bg-green-600 hover:bg-green-700 rounded-lg disabled:bg-gray-500">Forçar Início</button>
-                             <div className="grid grid-cols-2 gap-2">
-                                <button onClick={handleResetGame} className="w-full py-2 px-4 bg-red-600 hover:bg-red-700 rounded-lg">Resetar Jogo</button>
-                                <button 
-                                    onClick={() => {
-                                        setClearCardsJustification('');
-                                        setClearCardsError(null);
-                                        setClearCardsConfirmationText('');
-                                        setClearCardsPassword('');
-                                        setIsClearCardsModalOpen(true);
-                                    }} 
-                                    disabled={gameState.status !== 'waiting' || isClearingCards} 
-                                    className={`w-full py-2 px-4 rounded-lg ${gameState.status === 'waiting' ? 'bg-yellow-600 hover:bg-yellow-700 text-black' : 'bg-gray-600' } disabled:bg-gray-500 disabled:cursor-not-allowed`}
-                                >
+                            <div className="flex gap-2">
+                                <button onClick={handleForceStart} disabled={!canForceStart} className="flex-1 py-2 px-4 bg-green-600 hover:bg-green-700 rounded-lg font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed">Forçar Início</button>
+                                {(gameState?.status === 'running' || gameState?.status === 'paused') && (
+                                    <button 
+                                        onClick={handleTogglePause}
+                                        className={`flex-1 py-2 px-4 rounded-lg font-semibold transition-all ${
+                                            gameState.status === 'running'
+                                            ? 'bg-yellow-500 hover:bg-yellow-600 text-black'
+                                            : 'bg-blue-500 hover:bg-blue-600 text-white'
+                                        }`}
+                                    >
+                                        {gameState.status === 'running' ? 'Pausar Jogo' : 'Retomar Jogo'}
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex gap-2">
+                                <button onClick={handleResetGame} className="flex-1 py-2 px-4 bg-red-600 hover:bg-red-700 rounded-lg font-semibold">Resetar Jogo</button>
+                                <button onClick={handleClearAllCardsClick} disabled={gameState?.status !== 'waiting' || totalPlayers === 0} className="flex-1 py-2 px-4 bg-orange-600 hover:bg-orange-700 rounded-lg font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed">
                                     Limpar Todas as Cartelas
                                 </button>
-                             </div>
-                             {gameState.status === 'running' && <button onClick={handlePauseGame} className="w-full py-2 px-4 bg-yellow-500 text-black hover:bg-yellow-600 rounded-lg">Pausar Jogo</button>}
-                             {gameState.status === 'paused' && <button onClick={handleResumeGame} className="w-full py-2 px-4 bg-blue-500 hover:bg-blue-600 rounded-lg">Retomar Jogo</button>}
-                        </div>
+                            </div>
+                         </div>
+                         {!canForceStart && gameState?.status === 'waiting' && (
+                            <p className="text-center text-sm text-yellow-400 mt-2">
+                                Para iniciar: mínimo de 2 jogadores e 2 cartelas vendidas.<br />
+                                (Atualmente: {totalPlayers} jogador(es), {totalCards} cartela(s))
+                            </p>
+                         )}
                     </div>
-                    <div>
-                        <h2 className="text-xl font-bold mb-2">Configurações de Tempo (segundos)</h2>
-                        <div className="space-y-2">
-                            <div>
-                                <label className="block text-sm">Tempo de Lobby</label>
-                                <input type="number" value={lobbyTime} onChange={e => setLobbyTime(Number(e.target.value))} className="w-full p-2 bg-gray-700 rounded" />
+                    <div className="bg-gray-900 p-4 rounded-lg">
+                        <h3 className="text-xl font-semibold mb-4 text-center">Configurações de Tempo (segundos)</h3>
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <label htmlFor="lobby-time">Tempo de Espera no Lobby:</label>
+                                <input id="lobby-time" type="number" value={lobbyTime} onChange={e => setLobbyTime(Number(e.target.value))} className="w-24 p-2 bg-gray-700 border border-gray-600 rounded-lg text-center" />
                             </div>
-                            <div>
-                                <label className="block text-sm">Intervalo do Sorteio</label>
-                                <input type="number" value={drawTime} onChange={e => setDrawTime(Number(e.target.value))} className="w-full p-2 bg-gray-700 rounded" />
+                            <div className="flex items-center justify-between">
+                                <label htmlFor="draw-time">Intervalo entre Sorteios:</label>
+                                <input id="draw-time" type="number" value={drawTime} onChange={e => setDrawTime(Number(e.target.value))} className="w-24 p-2 bg-gray-700 border border-gray-600 rounded-lg text-center" />
                             </div>
-                            <div>
-                                <label className="block text-sm">Tempo Final do Jogo</label>
-                                <input type="number" value={endTime} onChange={e => setEndTime(Number(e.target.value))} className="w-full p-2 bg-gray-700 rounded" />
+                            <div className="flex items-center justify-between">
+                                <label htmlFor="end-time">Intervalo Pós-Jogo:</label>
+                                <input id="end-time" type="number" value={endTime} onChange={e => setEndTime(Number(e.target.value))} className="w-24 p-2 bg-gray-700 border border-gray-600 rounded-lg text-center" />
                             </div>
-                            <button onClick={handleSaveSettings} className="w-full py-2 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg">Salvar Configurações</button>
                         </div>
-                    </div>
-                    <div>
-                        <h2 className="text-xl font-bold mb-2">Configurações de Bônus (Fichas)</h2>
-                        <div className="space-y-2">
-                            <div>
-                                <label className="block text-sm">Bônus de Boas-Vindas</label>
-                                <input type="number" value={welcomeBonus} onChange={e => setWelcomeBonus(Number(e.target.value))} className="w-full p-2 bg-gray-700 rounded" />
-                            </div>
-                            <div>
-                                <label className="block text-sm">Bônus Diário</label>
-                                <input type="number" value={dailyBonus} onChange={e => setDailyBonus(Number(e.target.value))} className="w-full p-2 bg-gray-700 rounded" />
-                            </div>
-                             <button onClick={handleSaveBonuses} className="w-full py-2 px-4 bg-indigo-600 hover:bg-indigo-700 rounded-lg">Salvar Bônus</button>
-                        </div>
+                        <button onClick={handleSaveSettings} className="mt-6 w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold">Salvar Configurações</button>
                     </div>
                 </div>
-
                 {/* Coluna 2: Gerenciamento de Jogadores */}
-                 <div className="bg-gray-800 p-4 rounded-lg flex flex-col">
-                    <h2 className="text-xl font-bold mb-4 flex-shrink-0">Jogadores na Partida ({sortedPlayers.length})</h2>
-                    <div className="overflow-y-auto flex-grow">
-                        {sortedPlayers.length > 0 ? (
-                            <ul className="space-y-2 pr-2">
-                                {sortedPlayers.map(([uid, player]) => (
-                                    <li key={uid} className="bg-gray-700 p-2 rounded-lg">
-                                        <div className="flex justify-between items-center">
-                                            <div className="flex items-center gap-2 flex-1 min-w-0">
-                                                <span className={`w-3 h-3 rounded-full flex-shrink-0 ${playerStatuses[uid] === 'online' ? 'bg-green-500' : 'bg-red-500'}`}></span>
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="font-semibold truncate" title={player.displayName}>{player.displayName}</p>
-                                                    <p className="text-xs text-gray-500 truncate" title={uid}>UID: {uid}</p>
-                                                    <p className="text-xs text-gray-400">Cartelas: {player.cardCount || 0} | Faltam: {player.progress ?? '-'}</p>
-                                                </div>
-                                            </div>
-                                            <div className="flex items-center gap-1 flex-shrink-0 ml-2">
-                                                <button onClick={() => openManageFichasModal(uid, player.displayName)} className="p-1.5 bg-blue-600 hover:bg-blue-700 rounded text-xs">Gerenciar Fichas</button>
-                                                <button onClick={() => handleRemoveCard(uid)} className="p-1.5 bg-red-600 hover:bg-red-700 rounded"><TrashIcon className="w-4 h-4" /></button>
-                                                <button onClick={() => handleTogglePlayer(uid)} className="p-1.5 bg-gray-600 hover:bg-gray-500 rounded"><EyeIcon className="w-4 h-4" /></button>
-                                            </div>
+                <div className="bg-gray-900 p-4 rounded-lg">
+                    <h3 className="text-xl font-semibold mb-4 text-center">Gerenciamento de Jogadores</h3>
+                    <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2">
+                        {gameState && Object.keys(gameState.players).length > 0 ? (
+                            (Object.entries(gameState.players) as [string, { displayName: string; cardCount: number; }][]).map(([uid, player]) => (
+                                <div key={uid} className="bg-gray-700 rounded-md transition-all duration-300">
+                                    <div className="flex items-center justify-between p-2 cursor-pointer hover:bg-gray-600" onClick={() => handleTogglePlayer(uid)}>
+                                        <div>
+                                            <p className="font-semibold">{player.displayName}</p>
+                                            <p className="text-sm text-gray-400">{player.cardCount} cartela(s)</p>
                                         </div>
-                                        {expandedPlayerId === uid && (
-                                            <div className="mt-2 pt-2 border-t border-gray-600">
-                                                {isLoadingCards ? <p>Carregando...</p> : (
-                                                    playerCardDetails[uid] && playerCardDetails[uid].length > 0 ? (
-                                                        <div className="grid grid-cols-2 gap-2 text-sm">
-                                                            {playerCardDetails[uid].map(card => (
-                                                                <div key={card.id} className="bg-gray-800 p-1 rounded text-center">
-                                                                    <p>ID: ...{card.id.slice(-4)}</p>
-                                                                    <button onClick={() => setSelectedCardModal(card)} className="text-purple-400 hover:underline text-xs">Ver Cartela</button>
+                                        <div className="flex items-center gap-2">
+                                            <button
+                                                onClick={(e) => { e.stopPropagation(); handleRemoveCard(uid); }}
+                                                disabled={!player.cardCount || player.cardCount === 0 || gameState.status !== 'waiting'}
+                                                className="py-1 px-3 bg-red-600 hover:bg-red-700 rounded-lg text-sm font-semibold disabled:bg-gray-500 disabled:cursor-not-allowed"
+                                            >
+                                                Remover
+                                            </button>
+                                            <span className={`transform transition-transform text-gray-400 ${expandedPlayerId === uid ? 'rotate-180' : 'rotate-0'}`}>▼</span>
+                                        </div>
+                                    </div>
+                                    {expandedPlayerId === uid && (
+                                        <div className="p-4 border-t border-gray-600 bg-gray-800">
+                                            {isLoadingCards && <p className="text-sm text-center text-gray-400">Carregando...</p>}
+                                            {!isLoadingCards && playerCardDetails[uid] && playerCardDetails[uid].length > 0 ? (() => {
+                                                const drawnNumbersSet = new Set(gameState?.drawnNumbers || []);
+                                                return (
+                                                    <div className="space-y-4 max-h-64 overflow-y-auto pr-2">
+                                                        {playerCardDetails[uid].map((card, index) => (
+                                                            <div key={card.id} className="bg-gray-900 p-3 rounded-lg">
+                                                                <div className="flex items-center justify-between mb-3">
+                                                                    <p className="text-base font-semibold text-purple-300">Cartela #{index + 1} <span className="text-xs text-gray-400 font-mono">(ID: {card.id.substring(0,8)})</span></p>
+                                                                     <button
+                                                                        onClick={() => setSelectedCardModal(card)}
+                                                                        className="p-1 text-gray-400 hover:text-white transition-colors"
+                                                                        aria-label="Visualizar detalhes da cartela"
+                                                                    >
+                                                                        <EyeIcon className="w-5 h-5" />
+                                                                    </button>
                                                                 </div>
-                                                            ))}
-                                                        </div>
-                                                    ) : <p>Nenhuma cartela ativa.</p>
-                                                )}
-                                            </div>
-                                        )}
-                                    </li>
-                                ))}
-                            </ul>
+                                                                <div className="grid grid-cols-5 gap-1.5 text-center text-base">
+                                                                    {card.numbers.map((num, idx) => {
+                                                                        const isDrawn = drawnNumbersSet.has(num);
+                                                                        const isCenter = num === 0;
+                                                                        
+                                                                        let cellClasses = 'p-2 rounded-md aspect-square flex items-center justify-center font-bold';
+
+                                                                        if (isCenter) {
+                                                                            cellClasses += ' bg-yellow-500 text-black';
+                                                                        } else if (isDrawn) {
+                                                                            cellClasses += ' bg-green-500 text-white';
+                                                                        } else {
+                                                                            cellClasses += ' bg-gray-600 text-gray-300';
+                                                                        }
+                                                                        
+                                                                        return (
+                                                                            <div key={idx} className={cellClasses}>
+                                                                                {isCenter ? '★' : num}
+                                                                            </div>
+                                                                        );
+                                                                    })}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                );
+                                            })() : (
+                                                !isLoadingCards && <p className="text-sm text-center text-gray-500">Nenhuma cartela para exibir.</p>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            ))
                         ) : (
-                             <p className="text-gray-400 text-center italic mt-4">Nenhum jogador na partida.</p>
+                            <p className="text-center text-gray-400 italic">Nenhum jogador na partida.</p>
                         )}
                     </div>
                 </div>
-
-                {/* Coluna 3: Logs e Históricos */}
-                 <div className="bg-gray-800 p-4 rounded-lg flex flex-col space-y-4">
-                     <div className="flex-grow flex flex-col min-h-0">
-                        <h2 className="text-xl font-bold mb-2 flex-shrink-0">Histórico de Compras</h2>
-                        <input type="text" placeholder="Buscar por jogador..." value={purchaseHistorySearch} onChange={e => setPurchaseHistorySearch(e.target.value)} className="w-full p-2 mb-2 bg-gray-700 rounded flex-shrink-0"/>
-                        <div className="overflow-y-auto flex-grow text-sm pr-2">
-                             {filteredPurchaseHistory.map(item => (
-                                <div key={item.id} className="bg-gray-700 p-2 rounded mb-1">
-                                    <p><span className="font-semibold">{item.playerName}</span> comprou a cartela ...{item.cardId.slice(-4)}</p>
-                                    <p className="text-xs text-gray-400">{item.timestamp?.toDate().toLocaleTimeString()}</p>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                     <div className="flex-grow flex flex-col min-h-0">
-                        <h2 className="text-xl font-bold mb-2 flex-shrink-0">Chat do Lobby</h2>
-                         <input type="text" placeholder="Buscar no chat..." value={chatSearch} onChange={e => setChatSearch(e.target.value)} className="w-full p-2 mb-2 bg-gray-700 rounded flex-shrink-0"/>
-                        <div className="overflow-y-auto flex-grow text-sm pr-2">
-                            {filteredChatMessages.map(msg => (
-                                <div key={msg.id} className="bg-gray-700 p-2 rounded mb-1 flex justify-between items-start">
-                                    <div>
-                                        <p><span className="font-semibold text-blue-300">{msg.displayName}:</span> {msg.text}</p>
-                                        <p className="text-xs text-gray-400">{msg.timestamp?.toDate().toLocaleTimeString()}</p>
+                {/* Coluna 3: Logs e Moderação */}
+                <div className="flex flex-col gap-6" style={{ maxHeight: '600px' }}>
+                    <div className="bg-gray-900 p-4 rounded-lg flex flex-col min-h-0">
+                        <h3 className="text-xl font-semibold mb-2 text-center flex-shrink-0">Histórico de Vendas</h3>
+                        <input
+                            type="text"
+                            placeholder="Buscar por jogador..."
+                            value={purchaseHistorySearch}
+                            onChange={(e) => setPurchaseHistorySearch(e.target.value)}
+                            className="w-full p-2 mb-2 bg-gray-700 border border-gray-600 rounded-lg text-sm placeholder-gray-400"
+                        />
+                        <div className="space-y-2 overflow-y-auto pr-2 flex-grow">
+                            {filteredPurchaseHistory.length > 0 ? (
+                                filteredPurchaseHistory.map(item => (
+                                    <div key={item.id} className="bg-gray-700 p-2 rounded-md text-sm">
+                                        <p className="font-semibold text-purple-300">{item.playerName}</p>
+                                        <p className="text-xs text-gray-400 font-mono">ID: {item.cardId.substring(0, 12)}</p>
+                                        <p className="text-xs text-gray-500 text-right">{item.timestamp ? new Date(item.timestamp.toDate()).toLocaleTimeString('pt-BR') : '...'}</p>
                                     </div>
-                                    <button onClick={() => handleDeleteChatMessage(msg)} className="ml-2 p-1 bg-red-600 hover:bg-red-700 rounded-full flex-shrink-0"><TrashIcon className="w-3 h-3" /></button>
-                                </div>
-                            ))}
+                                ))
+                            ) : (
+                                 <p className="text-center text-gray-400 italic">
+                                    {purchaseHistory.length === 0 ? 'Nenhuma cartela vendida.' : 'Nenhum resultado encontrado.'}
+                                 </p>
+                            )}
                         </div>
                     </div>
-                     <div className="flex-grow flex flex-col min-h-0">
-                        <h2 className="text-xl font-bold mb-2 flex-shrink-0">Logs do Admin</h2>
-                        <input type="text" placeholder="Buscar nos logs..." value={adminLogSearch} onChange={e => setAdminLogSearch(e.target.value)} className="w-full p-2 mb-2 bg-gray-700 rounded flex-shrink-0"/>
-                        <div className="overflow-y-auto flex-grow text-sm pr-2">
-                             {filteredAdminLogs.map(log => (
-                                <div key={log.id} className="bg-gray-700 p-2 rounded mb-1">
-                                    <p><span className="font-semibold text-yellow-300">{log.adminName}</span>: <span className="text-purple-300">{log.action}</span></p>
-                                     {log.justification && <p className="text-xs italic text-gray-400">Justificação: {log.justification}</p>}
-                                    <p className="text-xs text-gray-400">{log.timestamp?.toDate().toLocaleString()}</p>
-                                </div>
-                            ))}
+                    <div className="bg-gray-900 p-4 rounded-lg flex flex-col min-h-0">
+                        <h3 className="text-xl font-semibold mb-2 text-center flex-shrink-0">Moderação do Chat</h3>
+                         <input
+                            type="text"
+                            placeholder="Buscar por jogador ou mensagem..."
+                            value={chatSearch}
+                            onChange={(e) => setChatSearch(e.target.value)}
+                            className="w-full p-2 mb-2 bg-gray-700 border border-gray-600 rounded-lg text-sm placeholder-gray-400"
+                        />
+                        <div className="space-y-2 overflow-y-auto pr-2 flex-grow">
+                            {filteredChatMessages.length > 0 ? (
+                                filteredChatMessages.map(msg => (
+                                    <div key={msg.id} className="bg-gray-700 p-2 rounded-md text-sm flex items-start justify-between gap-2">
+                                        <div className="flex-grow">
+                                            <p className="font-semibold text-purple-300">{msg.displayName}</p>
+                                            <p className="text-xs text-gray-400">{msg.timestamp ? new Date(msg.timestamp.toDate()).toLocaleString('pt-BR') : '...'}</p>
+                                            <p className="text-white break-words mt-1">{msg.text}</p>
+                                        </div>
+                                        <button 
+                                            onClick={() => handleDeleteChatMessage(msg)}
+                                            className="text-gray-500 hover:text-red-500 transition-colors p-1 rounded-full flex-shrink-0"
+                                            aria-label="Excluir mensagem"
+                                        >
+                                            <TrashIcon className="w-5 h-5" />
+                                        </button>
+                                    </div>
+                                ))
+                            ) : (
+                                <p className="text-center text-gray-400 italic">
+                                     {chatMessages.length === 0 ? 'Nenhuma mensagem no chat.' : 'Nenhum resultado encontrado.'}
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                     <div className="bg-gray-900 p-4 rounded-lg flex flex-col min-h-0">
+                        <h3 className="text-xl font-semibold mb-2 text-center flex-shrink-0">Log de Ações do Administrador</h3>
+                         <input
+                            type="text"
+                            placeholder="Buscar no log..."
+                            value={adminLogSearch}
+                            onChange={(e) => setAdminLogSearch(e.target.value)}
+                            className="w-full p-2 mb-2 bg-gray-700 border border-gray-600 rounded-lg text-sm placeholder-gray-400"
+                        />
+                        <div className="space-y-2 overflow-y-auto pr-2 flex-grow">
+                            {filteredAdminLogs.length > 0 ? (
+                                filteredAdminLogs.map(log => (
+                                    <div key={log.id} className="bg-gray-700 p-2 rounded-md text-sm">
+                                        <p className="font-semibold text-yellow-300">
+                                            {log.adminName} <span className="text-gray-400 font-normal">({log.action})</span>
+                                        </p>
+                                        {log.justification && <p className="text-xs text-gray-300 italic">Justificativa: {log.justification}</p>}
+                                        {log.details && <pre className="text-xs text-gray-400 bg-gray-800 p-1 rounded mt-1 whitespace-pre-wrap font-mono">{JSON.stringify(log.details, null, 2)}</pre>}
+                                        <p className="text-xs text-gray-500 text-right">{log.timestamp ? new Date(log.timestamp.toDate()).toLocaleString('pt-BR') : '...'}</p>
+                                    </div>
+                                ))
+                            ) : (
+                                <p className="text-center text-gray-400 italic">
+                                     {adminLogs.length === 0 ? 'Nenhuma ação registrada.' : 'Nenhum resultado encontrado.'}
+                                </p>
+                            )}
                         </div>
                     </div>
                 </div>
             </div>
+            {selectedCardModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+                    <div className="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md text-white border border-gray-700">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-2xl font-bold text-purple-400">Detalhes da Cartela</h3>
+                            <button onClick={() => setSelectedCardModal(null)} className="text-gray-400 hover:text-white text-3xl leading-none">&times;</button>
+                        </div>
+                        <p className="text-sm text-gray-400 mb-4 font-mono">ID: {selectedCardModal.id}</p>
+                        <div className="grid grid-cols-5 gap-4 text-center">
+                            {['B', 'I', 'N', 'G', 'O'].map((letter, colIndex) => (
+                                <div key={letter}>
+                                    <h4 className="text-xl font-bold mb-2 text-purple-300">{letter}</h4>
+                                    <div className="space-y-2">
+                                        {Array.from({ length: 5 }).map((_, rowIndex) => {
+                                            const num = selectedCardModal.numbers[rowIndex * 5 + colIndex];
+                                            const isDrawn = gameState?.drawnNumbers.includes(num);
+                                            const isCenter = num === 0;
+                                            return (
+                                                <div key={rowIndex} className={`p-2 rounded font-semibold ${isDrawn ? 'text-green-400' : ''} ${isCenter ? 'text-yellow-400' : ''}`}>
+                                                    {isCenter ? 'GRÁTIS' : num}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <button onClick={() => setSelectedCardModal(null)} className="mt-6 w-full py-2 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold">
+                            Fechar
+                        </button>
+                    </div>
+                </div>
+            )}
+            {isClearAllModalOpen && (
+                 <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+                    <div className="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-lg text-white border border-red-500">
+                        <form onSubmit={confirmAndExecuteClearAllCards}>
+                            <h3 className="text-2xl font-bold text-red-400 mb-4">Confirmar Limpeza de Todas as Cartelas</h3>
+                            <p className="text-gray-300 mb-4">
+                                Esta ação é <strong className="text-yellow-400">irreversível</strong>. Todas as cartelas da rodada atual serão removidas, o prêmio será zerado e os jogadores serão reembolsados.
+                            </p>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label htmlFor="admin-password-confirm" className="block text-sm font-medium text-gray-300 mb-1">Sua Senha de Administrador</label>
+                                    <input
+                                        id="admin-password-confirm"
+                                        type="password"
+                                        value={clearAllPassword}
+                                        onChange={(e) => setClearAllPassword(e.target.value)}
+                                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="admin-justification" className="block text-sm font-medium text-gray-300 mb-1">Justificação (Obrigatório)</label>
+                                    <textarea
+                                        id="admin-justification"
+                                        value={clearAllJustification}
+                                        onChange={(e) => setClearAllJustification(e.target.value)}
+                                        rows={3}
+                                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg"
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            {clearAllError && <p className="mt-4 text-center text-red-400 bg-red-900 bg-opacity-50 p-2 rounded-lg">{clearAllError}</p>}
+
+                            <div className="mt-6 flex justify-end gap-4">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsClearAllModalOpen(false);
+                                        setClearAllError(null);
+                                        setClearAllPassword('');
+                                        setClearAllJustification('');
+                                    }}
+                                    className="py-2 px-4 bg-gray-600 hover:bg-gray-700 rounded-lg font-semibold"
+                                    disabled={isClearingCards}
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="py-2 px-6 bg-red-700 hover:bg-red-800 rounded-lg font-bold disabled:bg-red-900 disabled:cursor-not-allowed flex items-center"
+                                    disabled={isClearingCards}
+                                >
+                                    {isClearingCards ? (
+                                        <>
+                                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            Limpando...
+                                        </>
+                                    ) : 'Confirmar e Limpar'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };

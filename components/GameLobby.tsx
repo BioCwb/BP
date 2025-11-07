@@ -39,11 +39,6 @@ interface GameHistoryItem {
     completedAt: firebase.firestore.Timestamp;
 }
 
-interface BonusSettings {
-    dailyBonus: number;
-}
-
-
 export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, onSpectate, onManageProfile, onLogout, onGoToAdmin }) => {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [myCardCount, setMyCardCount] = useState(0);
@@ -58,15 +53,11 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
   const [onlinePlayersCount, setOnlinePlayersCount] = useState(0);
   const [gameHistory, setGameHistory] = useState<GameHistoryItem[]>([]);
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
-  const [bonusSettings, setBonusSettings] = useState<BonusSettings>({ dailyBonus: 10 });
-
 
   const gameDocRef = useMemo(() => db.collection('games').doc('active_game'), []);
   const myCardsCollectionRef = useMemo(() => db.collection('player_cards').doc(user.uid).collection('cards').doc('active_game'), [user.uid]);
   const chatCollectionRef = useMemo(() => db.collection('chat'), []);
   const gameHistoryCollectionRef = useMemo(() => db.collection('game_history'), []);
-  const bonusConfigRef = useMemo(() => db.collection('game_config').doc('bonuses'), []);
-
 
   useEffect(() => {
     const unsubGame = gameDocRef.onSnapshot((doc) => {
@@ -97,18 +88,9 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
             const history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as GameHistoryItem));
             setGameHistory(history);
         });
-    
-    const unsubBonusConfig = bonusConfigRef.onSnapshot(doc => {
-        if (doc.exists) {
-            const data = doc.data();
-            setBonusSettings({
-                dailyBonus: data?.dailyBonus || 10,
-            });
-        }
-    });
 
-    return () => { unsubGame(); unsubCards(); unsubChat(); unsubHistory(); unsubBonusConfig(); };
-  }, [gameDocRef, myCardsCollectionRef, chatCollectionRef, gameHistoryCollectionRef, bonusConfigRef]);
+    return () => { unsubGame(); unsubCards(); unsubChat(); unsubHistory(); };
+  }, [gameDocRef, myCardsCollectionRef, chatCollectionRef, gameHistoryCollectionRef]);
 
   // Effect to count online players.
   useEffect(() => {
@@ -295,7 +277,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
     try {
         const userDocRef = db.collection("users").doc(user.uid);
         await userDocRef.update({
-            fichas: increment(bonusSettings.dailyBonus),
+            fichas: increment(10),
             lastBonusClaimedAt: serverTimestamp()
         });
     } catch (e: any) {
@@ -347,7 +329,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
                         disabled={!isBonusAvailable || isClaimingBonus}
                         className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50 disabled:bg-gray-600 disabled:cursor-not-allowed"
                      >
-                        {isClaimingBonus ? 'Resgatando...' : (isBonusAvailable ? `Resgatar Bônus Diário (${bonusSettings.dailyBonus} F)` : `Próximo bônus em ${bonusCooldown}`)}
+                        {isClaimingBonus ? 'Resgatando...' : (isBonusAvailable ? 'Resgatar Bônus Diário (10 F)' : `Próximo bônus em ${bonusCooldown}`)}
                     </button>
                      <button
                         onClick={onManageProfile}
