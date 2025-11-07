@@ -52,7 +52,7 @@ export const BingoCard: React.FC<BingoCardProps> = ({ numbers, drawnNumbers, gam
     };
 
     return (
-        <div className={`flex flex-col p-2 rounded-lg shadow-lg transition-all duration-500 ${isWinningCard ? 'bg-green-500 bingo-animation' : 'bg-blue-900 bg-opacity-50'}`}>
+        <div className={`relative flex flex-col p-2 rounded-lg shadow-lg transition-all duration-500 ${isWinningCard ? 'winning-card-animation' : 'bg-blue-900 bg-opacity-50'}`}>
             <div className="grid grid-cols-5 gap-1 aspect-square">
                 {numbers.map((num, index) => {
                     const isCenter = index === 12;
@@ -96,6 +96,13 @@ export const BingoCard: React.FC<BingoCardProps> = ({ numbers, drawnNumbers, gam
                     );
                 })}
             </div>
+            {isWinningCard && (
+                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <div className="bg-yellow-400 text-black font-extrabold text-2xl px-6 py-2 rounded-lg shadow-2xl transform -rotate-12 winner-badge-animation">
+                        VENCEDOR!
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
