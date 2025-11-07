@@ -3,6 +3,7 @@ import type firebase from 'firebase/compat/app';
 import { db, serverTimestamp, increment, auth, EmailAuthProvider } from '../firebase/config';
 import type { GameState } from './BingoGame';
 import { TrashIcon } from './icons/TrashIcon';
+import { EyeIcon } from './icons/EyeIcon';
 
 interface AdminPanelProps {
     user: firebase.User;
@@ -55,6 +56,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [purchaseHistorySearch, setPurchaseHistorySearch] = useState('');
     const [chatSearch, setChatSearch] = useState('');
     const [adminLogSearch, setAdminLogSearch] = useState('');
+    const [selectedCardModal, setSelectedCardModal] = useState<BingoCardData | null>(null);
 
     const gameDocRef = useMemo(() => db.collection('games').doc('active_game'), []);
     const purchaseHistoryCollectionRef = useMemo(() => db.collection('purchase_history'), []);
@@ -622,21 +624,30 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                         </div>
                                     </div>
                                     {expandedPlayerId === uid && (
-                                        <div className="p-2 border-t border-gray-600 bg-gray-800">
+                                        <div className="p-4 border-t border-gray-600 bg-gray-800">
                                             {isLoadingCards && <p className="text-sm text-center text-gray-400">Carregando...</p>}
                                             {!isLoadingCards && playerCardDetails[uid] && playerCardDetails[uid].length > 0 ? (() => {
                                                 const drawnNumbersSet = new Set(gameState?.drawnNumbers || []);
                                                 return (
-                                                    <div className="space-y-3 max-h-56 overflow-y-auto">
+                                                    <div className="space-y-4 max-h-64 overflow-y-auto pr-2">
                                                         {playerCardDetails[uid].map((card, index) => (
                                                             <div key={card.id} className="bg-gray-900 p-3 rounded-lg">
-                                                                <p className="text-sm font-semibold text-purple-300">Cartela #{index + 1} <span className="text-xs text-gray-400 font-mono">(ID: {card.id.substring(0,8)})</span></p>
-                                                                <div className="grid grid-cols-5 gap-2 text-center text-sm mt-2">
+                                                                <div className="flex items-center justify-between mb-3">
+                                                                    <p className="text-base font-semibold text-purple-300">Cartela #{index + 1} <span className="text-xs text-gray-400 font-mono">(ID: {card.id.substring(0,8)})</span></p>
+                                                                     <button
+                                                                        onClick={() => setSelectedCardModal(card)}
+                                                                        className="p-1 text-gray-400 hover:text-white transition-colors"
+                                                                        aria-label="Visualizar detalhes da cartela"
+                                                                    >
+                                                                        <EyeIcon className="w-5 h-5" />
+                                                                    </button>
+                                                                </div>
+                                                                <div className="grid grid-cols-5 gap-1.5 text-center text-base">
                                                                     {card.numbers.map((num, idx) => {
                                                                         const isDrawn = drawnNumbersSet.has(num);
                                                                         const isCenter = num === 0;
                                                                         
-                                                                        let cellClasses = 'p-1 rounded aspect-square flex items-center justify-center font-bold';
+                                                                        let cellClasses = 'p-2 rounded-md aspect-square flex items-center justify-center font-bold';
 
                                                                         if (isCenter) {
                                                                             cellClasses += ' bg-yellow-500 text-black';
@@ -760,6 +771,39 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                     </div>
                 </div>
             </div>
+            {selectedCardModal && (
+                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+                    <div className="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md text-white border border-gray-700">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-2xl font-bold text-purple-400">Detalhes da Cartela</h3>
+                            <button onClick={() => setSelectedCardModal(null)} className="text-gray-400 hover:text-white text-3xl leading-none">&times;</button>
+                        </div>
+                        <p className="text-sm text-gray-400 mb-4 font-mono">ID: {selectedCardModal.id}</p>
+                        <div className="grid grid-cols-5 gap-4 text-center">
+                            {['B', 'I', 'N', 'G', 'O'].map((letter, colIndex) => (
+                                <div key={letter}>
+                                    <h4 className="text-xl font-bold mb-2 text-purple-300">{letter}</h4>
+                                    <div className="space-y-2">
+                                        {Array.from({ length: 5 }).map((_, rowIndex) => {
+                                            const num = selectedCardModal.numbers[rowIndex * 5 + colIndex];
+                                            const isDrawn = gameState?.drawnNumbers.includes(num);
+                                            const isCenter = num === 0;
+                                            return (
+                                                <div key={rowIndex} className={`p-2 rounded font-semibold ${isDrawn ? 'text-green-400' : ''} ${isCenter ? 'text-yellow-400' : ''}`}>
+                                                    {isCenter ? 'GRÁTIS' : num}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                        <button onClick={() => setSelectedCardModal(null)} className="mt-6 w-full py-2 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold">
+                            Fechar
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
