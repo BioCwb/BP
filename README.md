@@ -24,7 +24,7 @@ Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real cons
 - **Painel de Administração:** Uma interface exclusiva para o administrador monitorar e controlar o jogo.
 - **Monitoramento em Tempo Real:** Visualize o status do jogo, o número de jogadores, a quantidade de bolas sorteadas e o prêmio acumulado.
 - **Controles Manuais do Jogo:**
-  - **Forçar Início:** Inicie a partida manualmente a qualquer momento.
+  - **Começar Jogo:** Inicie a partida manualmente a qualquer momento.
   - **Pausar/Retomar:** Pause o jogo, informando um motivo que será exibido para todos os jogadores, e retome quando desejar.
   - **Resetar Jogo:** Reinicie a rodada, limpando o estado atual do jogo.
   - **Limpar Todas as Cartelas:** Remova *todas* as cartelas de *todos* os jogadores da rodada. Esta ação requer a senha do administrador e uma justificação, reembolsa integralmente todos os jogadores e zera o prêmio da rodada.

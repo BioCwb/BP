@@ -318,11 +318,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                 await db.collection('admin_logs').add({
                     adminUid: user.uid,
                     adminName: user.displayName,
-                    action: 'force_start_game',
+                    action: 'start_game',
                     timestamp: serverTimestamp(),
                 });
 
-                showMessage('success', 'Jogo iniciado forçadamente!');
+                showMessage('success', 'Jogo iniciado!');
             } catch (error) {
                 showMessage('error', 'Falha ao iniciar o jogo.');
             }
@@ -575,7 +575,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                          <h3 className="text-xl font-semibold mb-4 text-center">Controles do Jogo</h3>
                          <div className="space-y-2">
                             <div className="flex gap-2">
-                                <button onClick={handleForceStart} disabled={!canForceStart} className="flex-1 py-2 px-4 bg-green-600 hover:bg-green-700 rounded-lg font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed">Forçar Início</button>
+                                <button onClick={handleForceStart} disabled={!canForceStart} className="flex-1 py-2 px-4 bg-green-600 hover:bg-green-700 rounded-lg font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed">Começar</button>
                                 {(gameState?.status === 'running' || gameState?.status === 'paused') && (
                                     <button 
                                         onClick={handleTogglePause}
