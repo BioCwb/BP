@@ -4,6 +4,7 @@ import type firebase from 'firebase/compat/app';
 import { db, arrayUnion, increment, serverTimestamp } from '../firebase/config';
 import type { GameState } from './BingoGame';
 import { generateBingoCard } from '../utils/bingoUtils';
+import { TrashIcon } from './icons/TrashIcon';
 
 interface GameLobbyProps {
   user: firebase.User;
@@ -41,6 +42,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
+  const [onlinePlayersCount, setOnlinePlayersCount] = useState(0);
 
   const gameDocRef = useMemo(() => db.collection('games').doc('active_game'), []);
   const myCardsCollectionRef = useMemo(() => db.collection('player_cards').doc(user.uid).collection('cards').doc('active_game'), [user.uid]);
@@ -70,6 +72,35 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
 
     return () => { unsubGame(); unsubCards(); unsubChat(); };
   }, [gameDocRef, myCardsCollectionRef, chatCollectionRef]);
+
+  // Effect to count online players.
+  useEffect(() => {
+    const statusCollectionRef = db.collection('player_status');
+
+    const countOnlinePlayers = () => {
+      // A player is online if they've been seen in the last 30 seconds.
+      const thirtySecondsAgo = new Date(Date.now() - 30000);
+      
+      // Note: This query requires a Firestore index on 'lastSeen'.
+      // Firebase will provide a link in the console error to create it automatically if it's missing.
+      statusCollectionRef.where('lastSeen', '>', thirtySecondsAgo).get()
+        .then(snapshot => {
+          setOnlinePlayersCount(snapshot.size);
+        })
+        .catch(err => {
+          console.error("Error getting online player count: ", err);
+        });
+    };
+
+    // Initial count when component mounts
+    countOnlinePlayers();
+
+    // Set up an interval to periodically refresh the count
+    const intervalId = setInterval(countOnlinePlayers, 10000); // Refresh every 10 seconds
+
+    // Clean up the interval when the component unmounts
+    return () => clearInterval(intervalId);
+  }, []);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -120,6 +151,17 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
     } catch (error) {
         console.error("Error sending message:", error);
         setError("Não foi possível enviar a mensagem.");
+    }
+  };
+
+  const handleDeleteMessage = async (messageId: string) => {
+    if (window.confirm('Tem certeza de que deseja excluir esta mensagem?')) {
+        try {
+            await chatCollectionRef.doc(messageId).delete();
+        } catch (error) {
+            console.error("Error deleting message:", error);
+            setError("Não foi possível excluir a mensagem.");
+        }
     }
   };
   
@@ -207,6 +249,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
             <div className="mb-6">
                 <h2 className="text-3xl font-bold text-white">Bem-vindo, {userData.displayName}!</h2>
                 <p className="text-2xl font-bold text-yellow-400 mt-2">Saldo: {typeof userData.fichas === 'number' ? userData.fichas : '...'} F</p>
+                <p className="text-lg text-green-400 mt-1">Jogadores Online: {onlinePlayersCount}</p>
                 <p className="text-lg text-gray-300 mt-1">Você tem {myCardCount} cartela(s).</p>
             </div>
             
@@ -269,11 +312,20 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
             <h3 className="text-xl font-bold text-center text-white mb-4 border-b border-gray-700 pb-2">Chat do Lobby</h3>
             <div className="flex-grow overflow-y-auto pr-2 space-y-4">
                 {chatMessages.map(msg => (
-                    <div key={msg.id} className={`flex flex-col ${msg.uid === user.uid ? 'items-end' : 'items-start'}`}>
+                     <div key={msg.id} className={`flex gap-2 items-center w-full ${msg.uid === user.uid ? 'flex-row-reverse' : 'flex-row'}`}>
                         <div className={`p-3 rounded-lg max-w-xs ${msg.uid === user.uid ? 'bg-purple-700' : 'bg-gray-700'}`}>
                             <p className={`text-xs font-bold mb-1 ${msg.uid === user.uid ? 'text-right text-purple-200' : 'text-left text-blue-300'}`}>{msg.displayName}</p>
                             <p className="text-white text-sm break-words">{msg.text}</p>
                         </div>
+                        {user.uid === ADMIN_UID && (
+                             <button
+                                onClick={() => handleDeleteMessage(msg.id)}
+                                className="text-gray-500 hover:text-red-500 transition-colors p-1 rounded-full flex-shrink-0"
+                                aria-label="Excluir mensagem"
+                            >
+                                <TrashIcon className="w-4 h-4" />
+                            </button>
+                        )}
                     </div>
                 ))}
                 <div ref={chatEndRef} />

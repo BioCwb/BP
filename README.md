@@ -24,6 +24,7 @@ Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real cons
   - **Forçar Início:** Inicie a partida manualmente a qualquer momento.
   - **Pausar/Retomar:** Pause o jogo, informando um motivo que será exibido para todos os jogadores, e retome quando desejar.
   - **Resetar Jogo:** Reinicie a rodada, limpando o estado atual do jogo.
+  - **Moderação de Chat:** Apague qualquer mensagem do chat do lobby diretamente pela interface para manter um ambiente amigável.
 - **Configurações de Tempo:** Ajuste a duração dos contadores de tempo do lobby, sorteio e tela de vencedores.
 
 ---
