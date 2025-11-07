@@ -55,6 +55,8 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
     const [playerStatuses, setPlayerStatuses] = useState<{ [uid: string]: 'online' | 'offline' }>({});
     const [allPlayerCards, setAllPlayerCards] = useState<{[uid: string]: {displayName: string, cards: BingoCardData[]}}>({});
     const lastSeenTimestampsRef = useRef<{ [uid: string]: number }>({});
+    const [showGameStartedMessage, setShowGameStartedMessage] = useState(false);
+    const prevStatusRef = useRef<GameState['status'] | undefined>();
 
 
     const gameDocRef = useMemo(() => db.collection('games').doc('active_game'), []);
@@ -95,6 +97,18 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
             if (unsubCards) unsubCards();
         };
     }, [user, gameDocRef, myCardsCollectionRef, isSpectator, onBackToLobby]);
+
+    // Effect to show "Game Started" notification.
+    useEffect(() => {
+        if (gameState) {
+            if (prevStatusRef.current === 'waiting' && gameState.status === 'running') {
+                setShowGameStartedMessage(true);
+                const timer = setTimeout(() => setShowGameStartedMessage(false), 3000); // Show for 3 seconds
+                return () => clearTimeout(timer);
+            }
+            prevStatusRef.current = gameState.status;
+        }
+    }, [gameState?.status]);
 
     // Fetch all player cards for spectator mode
     useEffect(() => {
@@ -305,7 +319,12 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
 
     return (
         <div className="w-full max-w-7xl mx-auto p-4 flex flex-col flex-grow relative h-screen">
-             {gameState.status === 'paused' && (
+            {showGameStartedMessage && (
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-green-600 border-2 border-green-300 text-white p-6 rounded-xl shadow-2xl z-[60] text-3xl font-extrabold animate-pulse">
+                    O JOGO COMEÇOU!
+                </div>
+            )}
+            {gameState.status === 'paused' && (
                 <div className="absolute inset-0 bg-black bg-opacity-80 flex flex-col items-center justify-center z-40 text-center p-4 rounded-lg">
                     <h2 className="text-5xl font-bold text-yellow-400 animate-pulse mb-4">JOGO PAUSADO</h2>
                     {gameState.pauseReason && (

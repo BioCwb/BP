@@ -637,7 +637,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                          {!canForceStart && gameState?.status === 'waiting' && (
                             <p className="text-center text-sm text-yellow-400 mt-2">
                                 Para iniciar: mínimo de 2 jogadores.<br />
-                                (Atualmente: {totalPlayers} jogador(es))
+                                (Atualmente: {totalPlayers} jogador(es) com cartela(s))
                             </p>
                          )}
                     </div>
