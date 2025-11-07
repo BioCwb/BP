@@ -39,10 +39,17 @@ interface AdminLogItem {
     timestamp: firebase.firestore.Timestamp;
 }
 
+interface OnlinePlayer {
+    uid: string;
+    displayName: string;
+    cardCount: number;
+}
+
 
 export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [gameState, setGameState] = useState<GameState | null>(null);
     const [onlinePlayersCount, setOnlinePlayersCount] = useState(0);
+    const [allOnlinePlayers, setAllOnlinePlayers] = useState<OnlinePlayer[]>([]);
     const [lobbyTime, setLobbyTime] = useState(30);
     const [drawTime, setDrawTime] = useState(8);
     const [endTime, setEndTime] = useState(15);
@@ -108,23 +115,54 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
 
     useEffect(() => {
         const statusCollectionRef = db.collection('player_status');
-
-        const countOnlinePlayers = () => {
+        const usersCollectionRef = db.collection('users');
+    
+        const fetchOnlinePlayers = async () => {
             const thirtySecondsAgo = new Date(Date.now() - 30000);
-            statusCollectionRef.where('lastSeen', '>', thirtySecondsAgo).get()
-                .then(snapshot => {
-                    setOnlinePlayersCount(snapshot.size);
-                })
-                .catch(err => {
-                    console.error("Error getting online player count: ", err);
-                });
+            try {
+                const statusSnapshot = await statusCollectionRef.where('lastSeen', '>', thirtySecondsAgo).get();
+                
+                // Update the stat box count
+                setOnlinePlayersCount(statusSnapshot.size);
+    
+                if (statusSnapshot.empty) {
+                    setAllOnlinePlayers([]);
+                    return;
+                }
+    
+                const onlineUserIds = statusSnapshot.docs.map(doc => doc.id);
+                
+                if (onlineUserIds.length === 0) {
+                    setAllOnlinePlayers([]);
+                    return;
+                }
+    
+                const usersSnapshot = await usersCollectionRef.where(db.FieldPath.documentId(), 'in', onlineUserIds).get();
+                
+                const onlineUsersData = usersSnapshot.docs.map(doc => ({
+                    uid: doc.id,
+                    displayName: doc.data().displayName || 'Jogador Desconhecido',
+                }));
+    
+                // Map this data to the format we want, including card count from gameState
+                const playersWithCardData = onlineUsersData.map(player => ({
+                    ...player,
+                    cardCount: gameState?.players[player.uid]?.cardCount || 0
+                })).sort((a, b) => b.cardCount - a.cardCount || a.displayName.localeCompare(b.displayName)); // Sort by card count, then name
+    
+                setAllOnlinePlayers(playersWithCardData);
+    
+            } catch (err) {
+                console.error("Error getting online players: ", err);
+            }
         };
-
-        countOnlinePlayers();
-        const intervalId = setInterval(countOnlinePlayers, 10000);
-
+    
+        fetchOnlinePlayers();
+        const intervalId = setInterval(fetchOnlinePlayers, 10000);
+    
         return () => clearInterval(intervalId);
-    }, []);
+    }, [gameState]);
+
 
     const filteredPurchaseHistory = useMemo(() => {
         if (!purchaseHistorySearch) return purchaseHistory;
@@ -626,33 +664,33 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                 <div className="bg-gray-900 p-4 rounded-lg">
                     <h3 className="text-xl font-semibold mb-4 text-center">Gerenciamento de Jogadores</h3>
                     <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2">
-                        {gameState && Object.keys(gameState.players).length > 0 ? (
-                            (Object.entries(gameState.players) as [string, { displayName: string; cardCount: number; }][]).map(([uid, player]) => (
-                                <div key={uid} className="bg-gray-700 rounded-md transition-all duration-300">
-                                    <div className="flex items-center justify-between p-2 cursor-pointer hover:bg-gray-600" onClick={() => handleTogglePlayer(uid)}>
+                        {allOnlinePlayers.length > 0 ? (
+                            allOnlinePlayers.map(player => (
+                                <div key={player.uid} className="bg-gray-700 rounded-md transition-all duration-300">
+                                    <div className="flex items-center justify-between p-2 cursor-pointer hover:bg-gray-600" onClick={() => handleTogglePlayer(player.uid)}>
                                         <div>
                                             <p className="font-semibold">{player.displayName}</p>
                                             <p className="text-sm text-gray-400">{player.cardCount} cartela(s)</p>
                                         </div>
                                         <div className="flex items-center gap-2">
                                             <button
-                                                onClick={(e) => { e.stopPropagation(); handleRemoveCard(uid); }}
-                                                disabled={!player.cardCount || player.cardCount === 0 || gameState.status !== 'waiting'}
+                                                onClick={(e) => { e.stopPropagation(); handleRemoveCard(player.uid); }}
+                                                disabled={!player.cardCount || player.cardCount === 0 || gameState?.status !== 'waiting'}
                                                 className="py-1 px-3 bg-red-600 hover:bg-red-700 rounded-lg text-sm font-semibold disabled:bg-gray-500 disabled:cursor-not-allowed"
                                             >
                                                 Remover
                                             </button>
-                                            <span className={`transform transition-transform text-gray-400 ${expandedPlayerId === uid ? 'rotate-180' : 'rotate-0'}`}>▼</span>
+                                            <span className={`transform transition-transform text-gray-400 ${expandedPlayerId === player.uid ? 'rotate-180' : 'rotate-0'}`}>▼</span>
                                         </div>
                                     </div>
-                                    {expandedPlayerId === uid && (
+                                    {expandedPlayerId === player.uid && (
                                         <div className="p-4 border-t border-gray-600 bg-gray-800">
                                             {isLoadingCards && <p className="text-sm text-center text-gray-400">Carregando...</p>}
-                                            {!isLoadingCards && playerCardDetails[uid] && playerCardDetails[uid].length > 0 ? (() => {
+                                            {!isLoadingCards && playerCardDetails[player.uid] && playerCardDetails[player.uid].length > 0 ? (() => {
                                                 const drawnNumbersSet = new Set(gameState?.drawnNumbers || []);
                                                 return (
                                                     <div className="space-y-4 max-h-64 overflow-y-auto pr-2">
-                                                        {playerCardDetails[uid].map((card, index) => (
+                                                        {playerCardDetails[player.uid].map((card, index) => (
                                                             <div key={card.id} className="bg-gray-900 p-3 rounded-lg">
                                                                 <div className="flex items-center justify-between mb-3">
                                                                     <p className="text-base font-semibold text-purple-300">Cartela #{index + 1} <span className="text-xs text-gray-400 font-mono">(ID: {card.id.substring(0,8)})</span></p>
@@ -698,7 +736,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                 </div>
                             ))
                         ) : (
-                            <p className="text-center text-gray-400 italic">Nenhum jogador na partida.</p>
+                            <p className="text-center text-gray-400 italic">Nenhum jogador online.</p>
                         )}
                     </div>
                 </div>
@@ -883,7 +921,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                 >
                                     {isClearingCards ? (
                                         <>
-                                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                             </svg>
