@@ -350,9 +350,6 @@ export default function App() {
               {error && (<p className="mt-4 text-center text-red-400 bg-red-900 bg-opacity-50 p-3 rounded-lg">{error}</p>)}
             </div>
           </div>
-          <div className="mt-4 text-center text-sm text-gray-400">
-            Versão: 1.0.1
-          </div>
         </div>
       );
   };
@@ -395,6 +392,11 @@ export default function App() {
             </div>
         )}
         {renderContent()}
+        {viewMode === 'auth' && !showVerificationMessage && !needsVerification && (
+            <footer className="fixed bottom-0 left-0 right-0 p-4 text-center text-sm text-gray-400">
+                Versão: 1.0.1
+            </footer>
+        )}
     </div>
   );
 }
