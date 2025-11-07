@@ -10,8 +10,9 @@ Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real cons
 - **Chat em Tempo Real no Lobby:** Converse com outros jogadores no lobby enquanto espera o início do jogo.
 - **Compra de Cartelas:** Os jogadores podem comprar até 50 cartelas por rodada usando fichas virtuais (F).
 - **Bônus Diário:** Possibilidade de resgatar 10 Fichas (F) gratuitas uma vez por dia para continuar jogando.
-- **Jogabilidade Interativa e Manual:** Marque seus próprios números na cartela. Um destaque especial aparece após 3 segundos para ajudar a encontrar números perdidos. Grite "BINGO!" com o botão individual de cada cartela.
-- **Ranking Dinâmico:** Um placar na tela do jogo mostra o progresso dos jogadores em tempo real.
+- **Jogabilidade Automatizada:** Sente-se e assista! O sistema marca automaticamente os números sorteados em suas cartelas.
+- **Detecção Automática de Vencedor:** O jogo detecta automaticamente o primeiro jogador a completar uma cartela inteira (blackout) e encerra a partida.
+- **Ranking Dinâmico:** Um placar na tela do jogo mostra o progresso dos jogadores em tempo real, indicando quantos números faltam para cada um.
 - **Status de Conexão do Jogador:** Veja quem está online ou offline através de um indicador de status (verde/vermelho) no ranking.
 - **Modo Espectador:** Entre no jogo como espectador para assistir à partida em tempo real, visualizando as cartelas de todos os jogadores, sem participar ativamente.
 - **Gerenciamento de Perfil:** Os jogadores podem atualizar seu nome de usuário e alterar sua senha.
@@ -24,7 +25,10 @@ Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real cons
   - **Forçar Início:** Inicie a partida manualmente a qualquer momento.
   - **Pausar/Retomar:** Pause o jogo, informando um motivo que será exibido para todos os jogadores, e retome quando desejar.
   - **Resetar Jogo:** Reinicie a rodada, limpando o estado atual do jogo.
-  - **Moderação de Chat:** Apague qualquer mensagem do chat do lobby diretamente pela interface para manter um ambiente amigável.
+- **Moderação de Chat:** Apague qualquer mensagem do chat do lobby diretamente pela interface para manter um ambiente amigável.
+- **Gerenciamento de Jogadores:**
+    - **Remover Cartela de Jogador:** Remova a última cartela de um jogador com uma justificação obrigatória. O jogador é reembolsado, e a ação fica registrada.
+- **Histórico de Vendas:** Monitore um log em tempo real de todas as cartelas compradas na rodada, incluindo quem comprou, o ID da cartela e quando.
 - **Configurações de Tempo:** Ajuste a duração dos contadores de tempo do lobby, sorteio e tela de vencedores.
 
 ---
@@ -48,12 +52,12 @@ O objetivo é ser o primeiro jogador a completar uma cartela inteira (todos os 2
 2.  **Acesse o Lobby:** Após o login, você estará no lobby. Aqui você pode conversar com outros jogadores e ver seu saldo de fichas.
 3.  **Compre Suas Cartelas:** Antes de a partida começar, clique no botão "Comprar Cartela (10 F)". Cada cartela custa 10 Fichas. Você pode comprar até 50 cartelas por rodada.
 4.  **Aguarde o Início:** O jogo não começa automaticamente. O administrador iniciará a partida manualmente. A exigência mínima é de **2 jogadores e 2 cartelas vendidas**.
-5.  **Acompanhe suas Cartelas:** Quando um número é sorteado, o sistema o marcará automaticamente em todas as cartelas. Acompanhe o preenchimento para ver o quão perto você está de ganhar!
-6.  **Vitória Automática:** O primeiro jogador a ter todos os 24 números de uma cartela sorteados vence o jogo. O sistema detecta a vitória instantaneamente e encerra a partida, declarando o(s) vencedor(es).
+5.  **Acompanhe e Marque:** Os números sorteados recebem um destaque especial na borda. Para uma experiência mais interativa, você pode clicar nesses números para marcá-los com uma animação, ajudando a visualizar seu progresso!
+6.  **Vitória Automática:** O primeiro jogador a ter todos os 24 números de uma cartela sorteados vence o jogo. O sistema detecta a vitória instantaneamente e encerra a partida, então não é preciso se preocupar em clicar em "BINGO!", apenas torça e acompanhe suas cartelas!
 7.  **Retorno ao Lobby:** Após a exibição dos vencedores, todos os jogadores retornam automaticamente ao lobby para se prepararem para a próxima rodada.
 
 ### Prêmios
-- Cada cartela comprada por 10 F adiciona 9 F ao prêmio acumulado da rodada.
+- Cada cartela comprida por 10 F adiciona 9 F ao prêmio acumulado da rodada.
 - O prêmio total é dividido igualmente entre todos os vencedores da rodada.
 
 ---

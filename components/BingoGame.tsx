@@ -25,6 +25,7 @@ export interface GameState {
 }
 
 interface BingoCardData {
+    id: string;
     numbers: number[];
 }
 
@@ -345,13 +346,14 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                 <div key={uid}>
                     <h3 className="text-lg font-bold text-center text-yellow-300 my-2 sticky top-0 bg-gray-800 py-1 z-10">{playerData.displayName}'s Cards ({playerData.cards.length})</h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-2">
-                        {playerData.cards.map((cardData, index) => (
+                        {playerData.cards.map((cardData) => (
                              <BingoCard 
-                                key={`${uid}-${index}`} 
+                                key={cardData.id} 
                                 numbers={cardData.numbers} 
                                 drawnNumbers={gameState.drawnNumbers} 
                                 gameStatus={gameState.status}
                                 isWinningCard={gameState.status === 'ended' && gameState.winners.some(w => w.uid === uid && JSON.stringify(w.card) === JSON.stringify(cardData.numbers))}
+                                lastDrawnNumber={lastDrawnNumber}
                              />
                         ))}
                     </div>
@@ -360,13 +362,14 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
         }
         return (
              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-2">
-                {myCards.map((cardData, index) => (
+                {myCards.map((cardData) => (
                     <BingoCard 
-                        key={index} 
+                        key={cardData.id} 
                         numbers={cardData.numbers} 
                         drawnNumbers={gameState.drawnNumbers} 
                         gameStatus={gameState.status}
                         isWinningCard={gameState.status === 'ended' && gameState.winners.some(w => w.uid === user.uid && JSON.stringify(w.card) === JSON.stringify(cardData.numbers))}
+                        lastDrawnNumber={lastDrawnNumber}
                      />
                 ))}
             </div>

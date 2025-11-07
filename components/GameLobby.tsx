@@ -20,6 +20,7 @@ interface GameLobbyProps {
 const ADMIN_UID = 'fKlSv57pZeSGPGiQG2z4NKAD9qi2';
 
 interface BingoCardData {
+    id: string;
     numbers: number[];
 }
 
@@ -204,25 +205,33 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
             const userDoc = await transaction.get(userDocRef);
             const gameDoc = await transaction.get(gameDocRef);
             const playerCardsDoc = await transaction.get(myCardsCollectionRef);
+            const purchaseHistoryRef = db.collection('purchase_history').doc();
 
             if (!userDoc.exists || !gameDoc.exists) throw new Error('Dados do usuário ou do jogo não encontrados. Por favor, tente novamente.');
             
             const currentFichas = userDoc.data()!.fichas;
             if (currentFichas < 10) throw new Error('Fichas (F) insuficientes para comprar uma cartela.');
 
-            const newCardData: BingoCardData = { numbers: generateBingoCard() };
+            const newCardData: BingoCardData = { 
+                id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+                numbers: generateBingoCard() 
+            };
             const gameData = gameDoc.data() as GameState;
-            const player = gameData.players?.[user.uid];
+            
+            const newPlayers = gameData.players ? { ...gameData.players } : {};
+            const player = newPlayers[user.uid];
+            
+            newPlayers[user.uid] = {
+                displayName: user.displayName || 'Player',
+                cardCount: (player?.cardCount || 0) + 1,
+                progress: player?.progress ?? 5,
+            };
 
             transaction.update(userDocRef, { fichas: increment(-10) });
 
             transaction.update(gameDocRef, {
                 prizePool: increment(9),
-                [`players.${user.uid}`]: {
-                    displayName: user.displayName || 'Player',
-                    cardCount: (player?.cardCount || 0) + 1,
-                    progress: player?.progress ?? 5,
-                }
+                players: newPlayers,
             });
             
             if (playerCardsDoc.exists) {
@@ -230,6 +239,14 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
             } else {
                 transaction.set(myCardsCollectionRef, { cards: [newCardData] });
             }
+
+            transaction.set(purchaseHistoryRef, {
+                playerId: user.uid,
+                playerName: user.displayName || 'Player',
+                cardId: newCardData.id,
+                cardNumbers: newCardData.numbers,
+                timestamp: serverTimestamp(),
+            });
         });
     } catch (e: any) {
         console.error("Buy card transaction failed:", e);

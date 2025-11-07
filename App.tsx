@@ -335,7 +335,7 @@ export default function App() {
         case 'profile':
             return <ProfileManagement user={currentUser!} onBack={() => setViewMode('lobby')} />;
         case 'admin':
-            return <AdminPanel onBack={() => setViewMode('lobby')} />;
+            return <AdminPanel user={currentUser!} onBack={() => setViewMode('lobby')} />;
         case 'auth':
             if (needsVerification) return renderVerificationView();
             if (showVerificationMessage) return renderPostRegistrationView();
