@@ -29,6 +29,16 @@ interface ChatMessage {
     timestamp: firebase.firestore.Timestamp;
 }
 
+interface AdminLogItem {
+    id: string;
+    adminName: string;
+    action: string;
+    details?: any;
+    justification?: string;
+    timestamp: firebase.firestore.Timestamp;
+}
+
+
 export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [gameState, setGameState] = useState<GameState | null>(null);
     const [onlinePlayersCount, setOnlinePlayersCount] = useState(0);
@@ -41,12 +51,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [isLoadingCards, setIsLoadingCards] = useState(false);
     const [purchaseHistory, setPurchaseHistory] = useState<PurchaseHistoryItem[]>([]);
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+    const [adminLogs, setAdminLogs] = useState<AdminLogItem[]>([]);
     const [purchaseHistorySearch, setPurchaseHistorySearch] = useState('');
     const [chatSearch, setChatSearch] = useState('');
+    const [adminLogSearch, setAdminLogSearch] = useState('');
 
     const gameDocRef = useMemo(() => db.collection('games').doc('active_game'), []);
     const purchaseHistoryCollectionRef = useMemo(() => db.collection('purchase_history'), []);
     const chatCollectionRef = useMemo(() => db.collection('chat'), []);
+    const adminLogsCollectionRef = useMemo(() => db.collection('admin_logs'), []);
 
     useEffect(() => {
         const unsubscribe = gameDocRef.onSnapshot((doc) => {
@@ -71,12 +84,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             setChatMessages(messages);
         });
 
+        const unsubLogs = adminLogsCollectionRef.orderBy('timestamp', 'desc').limit(100).onSnapshot((snapshot) => {
+            const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AdminLogItem));
+            setAdminLogs(logs);
+        });
+
         return () => { 
             unsubscribe();
             unsubHistory();
             unsubChat();
+            unsubLogs();
         };
-    }, [gameDocRef, purchaseHistoryCollectionRef, chatCollectionRef]);
+    }, [gameDocRef, purchaseHistoryCollectionRef, chatCollectionRef, adminLogsCollectionRef]);
 
     useEffect(() => {
         const statusCollectionRef = db.collection('player_status');
@@ -114,6 +133,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             msg.text.toLowerCase().includes(lowercasedQuery)
         );
     }, [chatMessages, chatSearch]);
+
+    const filteredAdminLogs = useMemo(() => {
+        if (!adminLogSearch) return adminLogs;
+        const lowercasedQuery = adminLogSearch.toLowerCase();
+        return adminLogs.filter(log =>
+            log.adminName.toLowerCase().includes(lowercasedQuery) ||
+            log.action.toLowerCase().includes(lowercasedQuery) ||
+            (log.justification && log.justification.toLowerCase().includes(lowercasedQuery))
+        );
+    }, [adminLogs, adminLogSearch]);
     
     const showMessage = (type: 'success' | 'error', text: string) => {
         setMessage({ type, text });
@@ -239,11 +268,21 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
 
     const handleSaveSettings = async () => {
         try {
-            await gameDocRef.update({
+            const settings = {
                 lobbyCountdownDuration: Number(lobbyTime),
                 drawIntervalDuration: Number(drawTime),
                 endGameDelayDuration: Number(endTime),
+            };
+            await gameDocRef.update(settings);
+            
+            await db.collection('admin_logs').add({
+                adminUid: user.uid,
+                adminName: user.displayName,
+                action: 'save_settings',
+                details: settings,
+                timestamp: serverTimestamp(),
             });
+
             showMessage('success', 'Configurações salvas com sucesso!');
         } catch (error) {
             console.error("Failed to save settings:", error);
@@ -266,6 +305,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
         if (canForceStart) {
             try {
                 await gameDocRef.update({ status: 'running', countdown: gameState!.drawIntervalDuration || 5 });
+                
+                await db.collection('admin_logs').add({
+                    adminUid: user.uid,
+                    adminName: user.displayName,
+                    action: 'force_start_game',
+                    timestamp: serverTimestamp(),
+                });
+
                 showMessage('success', 'Jogo iniciado forçadamente!');
             } catch (error) {
                 showMessage('error', 'Falha ao iniciar o jogo.');
@@ -284,6 +331,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
              try {
                 const announcement = gameState.winners.length ? `Último(s) vencedor(es): ${gameState.winners.map(w => w.displayName).join(', ')}` : "Jogo resetado pelo administrador.";
                 const batch = db.batch();
+                const adminLogRef = db.collection('admin_logs').doc();
+
 
                 // 1. Save game to history if it has ended
                 if (gameState.status === 'ended') {
@@ -322,6 +371,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                 purchaseHistorySnapshot.forEach(doc => {
                     batch.delete(doc.ref);
                 });
+
+                // 5. Log the admin action
+                batch.set(adminLogRef, {
+                    adminUid: user.uid,
+                    adminName: user.displayName,
+                    action: 'reset_game',
+                    timestamp: serverTimestamp(),
+                });
                 
                 await batch.commit();
                 showMessage('success', 'Jogo resetado com sucesso!');
@@ -334,27 +391,36 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
 
     const handleTogglePause = async () => {
         if (!gameState) return;
-        if (gameState.status === 'running') {
-            const reason = window.prompt('Por favor, informe o motivo da pausa:', 'Pausa técnica');
-            if (reason) {
-                try {
-                    await gameDocRef.update({ status: 'paused', pauseReason: reason });
-                    showMessage('success', 'Jogo pausado com sucesso.');
-                } catch (error) {
-                    showMessage('error', 'Falha ao pausar o jogo.');
-                }
-            }
-        } else if (gameState.status === 'paused') {
-            try {
+        const isPausing = gameState.status === 'running';
+        const reason = isPausing ? window.prompt('Por favor, informe o motivo da pausa:', 'Pausa técnica') : '';
+
+        if (isPausing && !reason) {
+            return; // Don't pause if no reason is given
+        }
+        
+        try {
+            if (isPausing) {
+                await gameDocRef.update({ status: 'paused', pauseReason: reason });
+            } else { // is resuming from 'paused'
                 await gameDocRef.update({ 
                     status: 'running', 
                     pauseReason: '', 
                     countdown: gameState.drawIntervalDuration || 5 
                 });
-                showMessage('success', 'Jogo retomado com sucesso.');
-            } catch (error) {
-                showMessage('error', 'Falha ao retomar o jogo.');
             }
+            
+            await db.collection('admin_logs').add({
+                adminUid: user.uid,
+                adminName: user.displayName,
+                action: isPausing ? 'pause_game' : 'resume_game',
+                details: { reason: isPausing ? reason : null },
+                timestamp: serverTimestamp(),
+            });
+
+            showMessage('success', `Jogo ${isPausing ? 'pausado' : 'retomado'} com sucesso.`);
+
+        } catch (error) {
+            showMessage('error', `Falha ao ${isPausing ? 'pausar' : 'retomar'} o jogo.`);
         }
     };
     
@@ -445,7 +511,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     };
 
     return (
-        <div className="w-full max-w-6xl bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl p-8 text-white">
+        <div className="w-full max-w-7xl bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl p-8 text-white">
             <div className="flex items-center justify-between mb-6">
                 <h2 className="text-3xl font-bold">Painel de Administração</h2>
                 <button onClick={onBack} className="text-gray-300 hover:text-white">&larr; Voltar para o Lobby</button>
@@ -604,7 +670,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                     </div>
                 </div>
                 {/* Coluna 3: Logs e Moderação */}
-                <div className="flex flex-col gap-6">
+                <div className="flex flex-col gap-6" style={{ maxHeight: '600px' }}>
                     <div className="bg-gray-900 p-4 rounded-lg flex flex-col min-h-0">
                         <h3 className="text-xl font-semibold mb-2 text-center flex-shrink-0">Histórico de Vendas</h3>
                         <input
@@ -660,6 +726,34 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                             ) : (
                                 <p className="text-center text-gray-400 italic">
                                      {chatMessages.length === 0 ? 'Nenhuma mensagem no chat.' : 'Nenhum resultado encontrado.'}
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                     <div className="bg-gray-900 p-4 rounded-lg flex flex-col min-h-0">
+                        <h3 className="text-xl font-semibold mb-2 text-center flex-shrink-0">Log de Ações do Administrador</h3>
+                         <input
+                            type="text"
+                            placeholder="Buscar no log..."
+                            value={adminLogSearch}
+                            onChange={(e) => setAdminLogSearch(e.target.value)}
+                            className="w-full p-2 mb-2 bg-gray-700 border border-gray-600 rounded-lg text-sm placeholder-gray-400"
+                        />
+                        <div className="space-y-2 overflow-y-auto pr-2 flex-grow">
+                            {filteredAdminLogs.length > 0 ? (
+                                filteredAdminLogs.map(log => (
+                                    <div key={log.id} className="bg-gray-700 p-2 rounded-md text-sm">
+                                        <p className="font-semibold text-yellow-300">
+                                            {log.adminName} <span className="text-gray-400 font-normal">({log.action})</span>
+                                        </p>
+                                        {log.justification && <p className="text-xs text-gray-300 italic">Justificativa: {log.justification}</p>}
+                                        {log.details && <pre className="text-xs text-gray-400 bg-gray-800 p-1 rounded mt-1 whitespace-pre-wrap font-mono">{JSON.stringify(log.details, null, 2)}</pre>}
+                                        <p className="text-xs text-gray-500 text-right">{log.timestamp ? new Date(log.timestamp.toDate()).toLocaleString('pt-BR') : '...'}</p>
+                                    </div>
+                                ))
+                            ) : (
+                                <p className="text-center text-gray-400 italic">
+                                     {adminLogs.length === 0 ? 'Nenhuma ação registrada.' : 'Nenhum resultado encontrado.'}
                                 </p>
                             )}
                         </div>

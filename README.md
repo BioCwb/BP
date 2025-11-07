@@ -34,6 +34,7 @@ Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real cons
 - **Histórico de Vendas:** Monitore um log em tempo real de todas as cartelas compradas na rodada, incluindo quem comprou, o ID da cartela e quando.
 - **Busca de Histórico e Chat:** Filtre rapidamente o histórico de vendas e as mensagens do chat por nome de jogador ou conteúdo da mensagem.
 - **Configurações de Tempo:** Ajuste a duração dos contadores de tempo do lobby, sorteio e tela de vencedores.
+- **Log de Ações do Administrador:** Um histórico detalhado de todas as ações administrativas (resetar jogo, pausar, remover cartela, etc.) é registrado, mostrando quem fez o quê, quando e com qual justificativa, garantindo total transparência.
 
 ---
 
