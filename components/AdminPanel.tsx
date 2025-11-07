@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import firebase from 'firebase/compat/app';
 import { db, serverTimestamp, increment, auth, EmailAuthProvider } from '../firebase/config';
 import type { GameState } from './BingoGame';
@@ -62,6 +62,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [chatSearch, setChatSearch] = useState('');
     const [adminLogSearch, setAdminLogSearch] = useState('');
     const [selectedCardModal, setSelectedCardModal] = useState<BingoCardData | null>(null);
+
+    // State for player connection status
+    const [playerStatuses, setPlayerStatuses] = useState<{ [uid: string]: 'online' | 'offline' }>({});
+    const lastSeenTimestampsRef = useRef<{ [uid: string]: number }>({});
 
     // State for bonus configuration
     const [welcomeBonus, setWelcomeBonus] = useState(100);
@@ -189,6 +193,48 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             });
 
         return () => unsubscribe(); // Cleanup listener on component unmount or when players change
+    }, [gameState?.players]);
+
+    // Player status (presence) listener
+    useEffect(() => {
+        if (!gameState || !gameState.players || Object.keys(gameState.players).length === 0) {
+            setPlayerStatuses({});
+            return;
+        };
+
+        const playerIds = Object.keys(gameState.players);
+        const statusRef = db.collection('player_status');
+
+        const calculateAndUpdateStatuses = () => {
+            const now = Date.now();
+            const currentStatuses: { [uid: string]: 'online' | 'offline' } = {};
+            playerIds.forEach(id => {
+                const lastSeen = lastSeenTimestampsRef.current[id];
+                currentStatuses[id] = (lastSeen && (now - lastSeen < 30000)) ? 'online' : 'offline';
+            });
+            setPlayerStatuses(currentStatuses);
+        };
+
+        // Note: Firestore 'in' query has a limit (30 for onSnapshot).
+        // This should be sufficient for the scale of this game.
+        const unsub = statusRef
+            .where(firebase.firestore.FieldPath.documentId(), 'in', playerIds)
+            .onSnapshot((snapshot) => {
+                snapshot.forEach(doc => {
+                    const lastSeen = doc.data().lastSeen?.toMillis();
+                    if (lastSeen) {
+                       lastSeenTimestampsRef.current[doc.id] = lastSeen;
+                    }
+                });
+                calculateAndUpdateStatuses();
+            });
+
+        const interval = setInterval(calculateAndUpdateStatuses, 10000);
+
+        return () => {
+            unsub();
+            clearInterval(interval);
+        };
     }, [gameState?.players]);
 
     // Countdown for lobby before game starts
@@ -1054,11 +1100,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                 {sortedPlayers.map(([uid, player]) => (
                                     <li key={uid} className="bg-gray-700 p-2 rounded-lg">
                                         <div className="flex justify-between items-center">
-                                            <div>
-                                                <p className="font-semibold">{player.displayName}</p>
-                                                <p className="text-xs text-gray-400">Cartelas: {player.cardCount || 0} | Faltam: {player.progress ?? '-'}</p>
+                                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                                                <span className={`w-3 h-3 rounded-full flex-shrink-0 ${playerStatuses[uid] === 'online' ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-semibold truncate" title={player.displayName}>{player.displayName}</p>
+                                                    <p className="text-xs text-gray-500 truncate" title={uid}>UID: {uid}</p>
+                                                    <p className="text-xs text-gray-400">Cartelas: {player.cardCount || 0} | Faltam: {player.progress ?? '-'}</p>
+                                                </div>
                                             </div>
-                                            <div className="flex items-center gap-1">
+                                            <div className="flex items-center gap-1 flex-shrink-0 ml-2">
                                                 <button onClick={() => openManageFichasModal(uid, player.displayName)} className="p-1.5 bg-blue-600 hover:bg-blue-700 rounded text-xs">Gerenciar Fichas</button>
                                                 <button onClick={() => handleRemoveCard(uid)} className="p-1.5 bg-red-600 hover:bg-red-700 rounded"><TrashIcon className="w-4 h-4" /></button>
                                                 <button onClick={() => handleTogglePlayer(uid)} className="p-1.5 bg-gray-600 hover:bg-gray-500 rounded"><EyeIcon className="w-4 h-4" /></button>
