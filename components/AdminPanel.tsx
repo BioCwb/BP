@@ -356,16 +356,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                 await db.collection('admin_logs').add({
                     adminUid: user.uid,
                     adminName: user.displayName,
-                    action: 'start_game',
+                    action: 'force_start_game',
                     timestamp: serverTimestamp(),
                 });
 
-                showMessage('success', 'Jogo iniciado!');
+                showMessage('success', 'Jogo iniciado com sucesso!');
             } catch (error) {
-                showMessage('error', 'Falha ao iniciar o jogo.');
+                showMessage('error', 'Falha ao forçar o início do jogo.');
             }
         } else {
-            showMessage('error', 'O jogo requer no mínimo 2 jogadores para iniciar.');
+            showMessage('error', 'O jogo requer no mínimo 2 jogadores com cartelas para iniciar.');
         }
     };
     
@@ -613,7 +613,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                          <h3 className="text-xl font-semibold mb-4 text-center">Controles do Jogo</h3>
                          <div className="space-y-2">
                             <div className="flex gap-2">
-                                <button onClick={handleForceStart} disabled={!canForceStart} className="flex-1 py-2 px-4 bg-green-600 hover:bg-green-700 rounded-lg font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed">Começar</button>
+                                <button onClick={handleForceStart} disabled={!canForceStart} className="flex-1 py-2 px-4 bg-green-600 hover:bg-green-700 rounded-lg font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed">Forçar Início</button>
                                 {(gameState?.status === 'running' || gameState?.status === 'paused') && (
                                     <button 
                                         onClick={handleTogglePause}
@@ -637,7 +637,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                          {!canForceStart && gameState?.status === 'waiting' && (
                             <p className="text-center text-sm text-yellow-400 mt-2">
                                 Para iniciar: mínimo de 2 jogadores.<br />
-                                (Atualmente: {totalPlayers} jogador(es) com cartela(s))
+                                (Atualmente: {totalPlayers} jogador(es))
                             </p>
                          )}
                     </div>

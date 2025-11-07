@@ -24,7 +24,7 @@ Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real cons
 - **Painel de Administração:** Uma interface exclusiva para o administrador monitorar e controlar o jogo.
 - **Monitoramento em Tempo Real:** Visualize o status do jogo, o número de jogadores, a quantidade de bolas sorteadas e o prêmio acumulado.
 - **Controles Manuais do Jogo:**
-  - **Começar Jogo:** Inicie a partida manualmente a qualquer momento.
+  - **Forçar Início:** Inicie a partida manualmente a qualquer momento, desde que haja pelo menos 2 jogadores com cartelas compradas.
   - **Pausar/Retomar:** Pause o jogo, informando um motivo que será exibido para todos os jogadores, e retome quando desejar.
   - **Resetar Jogo:** Reinicie a rodada, limpando o estado atual do jogo.
   - **Limpar Todas as Cartelas:** Remova *todas* as cartelas de *todos* os jogadores da rodada. Esta ação requer a senha do administrador e uma justificação, reembolsa integralmente todos os jogadores e zera o prêmio da rodada.
@@ -56,7 +56,7 @@ O objetivo é ser o primeiro jogador a completar uma cartela inteira (todos os 2
 1.  **Crie uma Conta e Faça Login:** Use seu e-mail ou conta Google para acessar o jogo. Novos jogadores recebem um bônus de 100 Fichas (F).
 2.  **Acesse o Lobby:** Após o login, você estará no lobby. Aqui você pode conversar com outros jogadores e ver seu saldo de fichas.
 3.  **Compre Suas Cartelas:** Antes de a partida começar, clique no botão "Comprar Cartela (10 F)". Cada cartela custa 10 Fichas. Você pode comprar até 10 cartelas por rodada. As cartelas são válidas para uma única partida; você precisará comprar novas cartelas para cada nova rodada.
-4.  **Aguarde o Início:** O jogo não começa automaticamente. O administrador iniciará a partida manualmente. A exigência mínima é de **2 jogadores**.
+4.  **Aguarde o Início:** O jogo não começa automaticamente. O administrador iniciará a partida manualmente assim que houver no mínimo **2 jogadores com cartelas compradas**.
 5.  **Acompanhe e Marque:** Os números sorteados recebem um destaque especial na borda. Para uma experiência mais interativa, você pode clicar nesses números para marcá-los com uma animação, ajudando a visualizar seu progresso!
 6.  **Vitória Automática:** O primeiro jogador a ter todos os 24 números de uma cartela sorteados vence o jogo. O sistema detecta a vitória instantaneamente e encerra a partida, então não é preciso se preocupar em clicar em "BINGO!", apenas torça e acompanhe suas cartelas!
 7.  **Retorno ao Lobby:** Após a exibição dos vencedores, todos os jogadores retornam automaticamente ao lobby para se prepararem para a próxima rodada.
