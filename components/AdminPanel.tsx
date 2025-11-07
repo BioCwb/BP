@@ -79,6 +79,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     // State for "Clear All Cards" modal
     const [isClearCardsModalOpen, setIsClearCardsModalOpen] = useState(false);
     const [clearCardsJustification, setClearCardsJustification] = useState('');
+    const [clearCardsConfirmationText, setClearCardsConfirmationText] = useState('');
     const [clearCardsError, setClearCardsError] = useState<string | null>(null);
     const [isClearingCards, setIsClearingCards] = useState(false);
 
@@ -536,21 +537,48 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const handleForceStart = async () => {
         const adminUser = auth.currentUser;
         if (!adminUser || !gameState) return;
-
+    
+        const playerCount = Object.keys(gameState.players || {}).length;
+        const prizePool = gameState.prizePool || 0;
+    
+        if (playerCount < 2 || prizePool === 0) {
+            let confirmationMessage = "Atenção:\n\n";
+            if (playerCount < 2) {
+                confirmationMessage += `- Há menos de 2 jogadores na partida.\n`;
+            }
+            if (prizePool === 0) {
+                confirmationMessage += `- O prêmio acumulado é 0 F.\n`;
+            }
+            confirmationMessage += "\nDeseja mesmo assim forçar o início do jogo?";
+    
+            if (!window.confirm(confirmationMessage)) {
+                return; // Admin cancelled the action
+            }
+        }
+    
         try {
             await gameDocRef.update({
                 status: 'running',
                 host: adminUser.uid,
                 countdown: gameState.drawIntervalDuration,
             });
-
+    
+            const justification = (playerCount < 2 || prizePool === 0) 
+                ? `Início forçado com ${playerCount} jogadores e prêmio de ${prizePool} F.` 
+                : null;
+    
             await db.collection('admin_logs').add({
                 adminUid: adminUser.uid,
-                adminName: adminUser.displayName,
+                adminName: user.displayName,
                 action: 'force_start_game',
+                details: {
+                    playerCountAtStart: playerCount,
+                    prizePoolAtStart: prizePool,
+                },
+                justification: justification,
                 timestamp: serverTimestamp(),
             });
-
+    
             showMessage('success', 'Jogo iniciado com força!');
         } catch (error) {
             console.error("Error forcing game start:", error);
@@ -675,6 +703,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             showMessage('success', 'Todas as cartelas foram limpas e os jogadores reembolsados.');
             setIsClearCardsModalOpen(false);
             setClearCardsJustification('');
+            setClearCardsConfirmationText('');
 
         } catch (error: any) {
             console.error("Error clearing all cards:", error);
@@ -814,10 +843,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             )}
             
             {isClearCardsModalOpen && (
-                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50">
-                    <div className="bg-gray-800 p-6 rounded-lg shadow-2xl w-full max-w-md">
-                        <h2 className="text-2xl font-bold mb-4 text-yellow-400">Confirmar Limpeza de Cartelas</h2>
-                        <p className="text-gray-300 mb-4">Esta ação irá remover TODAS as cartelas de TODOS os jogadores e reembolsá-los. O prêmio será zerado. Esta ação não pode ser desfeita.</p>
+                <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-50 p-4">
+                    <div className="bg-gray-800 p-6 rounded-lg shadow-2xl w-full max-w-md border-2 border-red-500">
+                        <div className="flex items-center mb-4">
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-red-500 mr-3 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                            <h2 className="text-2xl font-bold text-red-400">Confirmar Ação Crítica</h2>
+                        </div>
+                        <p className="text-gray-300 mb-4">
+                            Esta ação irá <strong className="text-yellow-400">remover TODAS as cartelas de TODOS os jogadores</strong> e reembolsá-los integralmente. 
+                            O prêmio acumulado será zerado. Esta ação é <strong className="text-red-500 uppercase">irreversível</strong>.
+                        </p>
                         <form onSubmit={handleConfirmClearAllCards}>
                             <div className="mb-4">
                                 <label htmlFor="clear-justification" className="block text-sm font-medium text-gray-300 mb-1">Justificação (Obrigatória)</label>
@@ -826,15 +861,31 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                     value={clearCardsJustification} 
                                     onChange={(e) => setClearCardsJustification(e.target.value)} 
                                     rows={3} 
-                                    className="w-full py-2 px-3 bg-gray-700 border border-gray-600 rounded-lg" 
+                                    className="w-full py-2 px-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500" 
                                     placeholder="Ex: Fim do evento, reset da rodada."
+                                />
+                            </div>
+                            <div className="mb-4 bg-gray-900 p-4 rounded-lg border border-yellow-600">
+                                <label htmlFor="clear-confirmation-text" className="block text-sm font-medium text-gray-300 mb-2 text-center">
+                                    Para confirmar, digite <strong className="text-yellow-400 tracking-widest">CONFIRMAR</strong> no campo abaixo.
+                                </label>
+                                <input
+                                    id="clear-confirmation-text"
+                                    type="text"
+                                    value={clearCardsConfirmationText}
+                                    onChange={(e) => setClearCardsConfirmationText(e.target.value)}
+                                    className="w-full py-2 px-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500 text-center uppercase"
                                 />
                             </div>
                             {clearCardsError && <p className="text-red-400 mb-4">{clearCardsError}</p>}
                             <div className="flex justify-end gap-4">
                                 <button type="button" onClick={() => setIsClearCardsModalOpen(false)} className="py-2 px-4 bg-gray-600 hover:bg-gray-700 rounded-lg">Cancelar</button>
-                                <button type="submit" disabled={isClearingCards} className="py-2 px-4 bg-red-600 hover:bg-red-700 rounded-lg disabled:bg-gray-500">
-                                    {isClearingCards ? 'Limpando...' : 'Confirmar Limpeza'}
+                                <button 
+                                    type="submit" 
+                                    disabled={isClearingCards || clearCardsConfirmationText !== 'CONFIRMAR' || !clearCardsJustification.trim()} 
+                                    className="py-2 px-4 bg-red-600 hover:bg-red-700 rounded-lg disabled:bg-gray-500 disabled:cursor-not-allowed"
+                                >
+                                    {isClearingCards ? 'Limpando...' : 'Confirmar e Limpar Tudo'}
                                 </button>
                             </div>
                         </form>
@@ -868,10 +919,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                     onClick={() => {
                                         setClearCardsJustification('');
                                         setClearCardsError(null);
+                                        setClearCardsConfirmationText('');
                                         setIsClearCardsModalOpen(true);
                                     }} 
                                     disabled={gameState.status !== 'waiting' || isClearingCards} 
-                                    className={`w-full py-2 px-4 rounded-lg ${gameState.status === 'waiting' ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-600' } disabled:bg-gray-500 disabled:cursor-not-allowed`}
+                                    className={`w-full py-2 px-4 rounded-lg ${gameState.status === 'waiting' ? 'bg-yellow-600 hover:bg-yellow-700 text-black' : 'bg-gray-600' } disabled:bg-gray-500 disabled:cursor-not-allowed`}
                                 >
                                     Limpar Todas as Cartelas
                                 </button>
