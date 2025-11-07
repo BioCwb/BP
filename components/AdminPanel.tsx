@@ -102,6 +102,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     };
     
     const handleDeleteChatMessage = async (message: ChatMessage) => {
+        const adminUser = auth.currentUser;
+        if (!adminUser) {
+            showMessage('error', 'Administrador não autenticado. Por favor, faça login novamente.');
+            return;
+        }
+
         if (window.confirm(`Tem certeza de que deseja apagar a mensagem de "${message.displayName}"?\n\n"${message.text}"`)) {
             try {
                 const batch = db.batch();
@@ -111,8 +117,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                 batch.delete(chatDocRef);
 
                 batch.set(adminLogRef, {
-                    adminUid: user.uid,
-                    adminName: user.displayName,
+                    adminUid: adminUser.uid,
+                    adminName: adminUser.displayName || 'Admin',
                     action: 'delete_chat_message',
                     details: {
                         deletedMessageId: message.id,

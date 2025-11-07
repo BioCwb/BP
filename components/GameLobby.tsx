@@ -176,12 +176,14 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
   const handleBuyCard = async () => {
     setError(null);
     setIsBuying(true);
-    if (myCardCount >= 10) { 
+
+    // Client-side validation
+    if (myCardCount >= 10) {
         setError('Você não pode ter mais de 10 cartelas.');
         setIsBuying(false);
         return;
     }
-    if (userData.fichas < 10) { 
+    if (userData.fichas < 10) {
         setError('Fichas (F) insuficientes para comprar uma cartela.');
         setIsBuying(false);
         return;
@@ -190,44 +192,59 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
     try {
         await db.runTransaction(async (transaction) => {
             const userDocRef = db.collection("users").doc(user.uid);
-            const userDoc = await transaction.get(userDocRef);
-            const gameDoc = await transaction.get(gameDocRef);
-            const playerCardsDoc = await transaction.get(myCardsCollectionRef);
+            const playerCardsDocRef = db.collection('player_cards').doc(user.uid).collection('cards').doc('active_game');
             const purchaseHistoryRef = db.collection('purchase_history').doc();
 
-            if (!userDoc.exists || !gameDoc.exists) throw new Error('Dados do usuário ou do jogo não encontrados. Por favor, tente novamente.');
-            
-            const currentFichas = userDoc.data()!.fichas;
-            if (currentFichas < 10) throw new Error('Fichas (F) insuficientes para comprar uma cartela.');
+            // Fetch all necessary documents within the transaction
+            const userDoc = await transaction.get(userDocRef);
+            const gameDoc = await transaction.get(gameDocRef);
+            const playerCardsDoc = await transaction.get(playerCardsDocRef);
 
-            const newCardData: BingoCardData = { 
+            // Validate documents exist
+            if (!userDoc.exists || !gameDoc.exists) {
+                throw new Error('Dados do usuário ou do jogo não encontrados. Por favor, tente novamente.');
+            }
+
+            // Server-side validation for security and data integrity
+            if (userDoc.data()!.fichas < 10) {
+                throw new Error('Fichas (F) insuficientes para comprar uma cartela.');
+            }
+            const currentCards = playerCardsDoc.exists() ? playerCardsDoc.data()!.cards || [] : [];
+            if (currentCards.length >= 10) {
+                throw new Error('Você não pode ter mais de 10 cartelas.');
+            }
+
+            // Prepare new card data
+            const newCardData: BingoCardData = {
                 id: `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-                numbers: generateBingoCard() 
+                numbers: generateBingoCard()
             };
             const gameData = gameDoc.data() as GameState;
-            
+
+            // Prepare updated player list for the game state
             const newPlayers = gameData.players ? { ...gameData.players } : {};
             const player = newPlayers[user.uid];
-            
             newPlayers[user.uid] = {
                 displayName: user.displayName || 'Player',
                 cardCount: (player?.cardCount || 0) + 1,
-                progress: player?.progress ?? 5,
+                progress: player?.progress ?? 24, // Default progress for blackout bingo is 24
             };
 
+            // Queue up all transaction writes
             transaction.update(userDocRef, { fichas: increment(-10) });
 
             transaction.update(gameDocRef, {
-                prizePool: increment(9),
+                prizePool: increment(9), // 9 F goes to prize pool, 1 F is house cut
                 players: newPlayers,
             });
-            
+
             if (playerCardsDoc.exists) {
-                transaction.update(myCardsCollectionRef, { cards: arrayUnion(newCardData) });
+                transaction.update(playerCardsDocRef, { cards: arrayUnion(newCardData) });
             } else {
-                transaction.set(myCardsCollectionRef, { cards: [newCardData] });
+                transaction.set(playerCardsDocRef, { cards: [newCardData] });
             }
 
+            // Create an audit log for the purchase
             transaction.set(purchaseHistoryRef, {
                 playerId: user.uid,
                 playerName: user.displayName || 'Player',
@@ -238,11 +255,18 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
         });
     } catch (e: any) {
         console.error("Buy card transaction failed:", e);
-        setError(e.message);
+        if (e.message.includes('10 cartelas')) {
+            setError('Você não pode ter mais de 10 cartelas.');
+        } else if (e.message.includes('insuficientes')) {
+            setError('Fichas (F) insuficientes para comprar uma cartela.');
+        } else {
+            setError(e.message);
+        }
     } finally {
         setIsBuying(false);
     }
-  };
+};
+
 
   const handleDailyBonus = async () => {
     if (!isBonusAvailable || isClaimingBonus) return;

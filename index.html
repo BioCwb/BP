@@ -15,8 +15,14 @@
       }
       
       @keyframes mark-number-pulse {
-        0%, 100% { transform: scale(1.05); }
-        50% { transform: scale(1.2); }
+        0%, 100% { 
+          transform: scale(1.05); 
+          box-shadow: 0 0 4px #a78bfa, 0 0 8px #a78bfa; /* purple-400 glow */
+        }
+        50% { 
+          transform: scale(1.15); 
+          box-shadow: 0 0 12px #c4b5fd, 0 0 20px #c4b5fd; /* purple-300 glow */
+        }
       }
       .marked-animation {
         animation: mark-number-pulse 1.5s ease-in-out infinite;
