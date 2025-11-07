@@ -8,7 +8,7 @@ Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real cons
 - **Autenticação Segura:** Sistema de login e registro com e-mail/senha e login social com Google. Inclui verificação de e-mail.
 - **Lobby do Jogo:** Uma área central onde os jogadores podem ver seu saldo, comprar cartelas e entrar na próxima partida.
 - **Chat em Tempo Real no Lobby:** Converse com outros jogadores no lobby enquanto espera o início do jogo.
-- **Compra de Cartelas:** Os jogadores podem comprar até 50 cartelas por rodada usando fichas virtuais (F).
+- **Compra de Cartelas:** Os jogadores podem comprar até 10 cartelas por rodada usando fichas virtuais (F).
 - **Bônus Diário:** Possibilidade de resgatar 10 Fichas (F) gratuitas uma vez por dia para continuar jogando.
 - **Jogabilidade Automatizada:** Sente-se e assista! O sistema marca automaticamente os números sorteados em suas cartelas.
 - **Detecção Automática de Vencedor:** O jogo detecta automaticamente o primeiro jogador a completar uma cartela inteira (blackout) e encerra a partida.
@@ -25,6 +25,7 @@ Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real cons
   - **Forçar Início:** Inicie a partida manualmente a qualquer momento.
   - **Pausar/Retomar:** Pause o jogo, informando um motivo que será exibido para todos os jogadores, e retome quando desejar.
   - **Resetar Jogo:** Reinicie a rodada, limpando o estado atual do jogo.
+  - **Limpar Todas as Cartelas:** Remova *todas* as cartelas de *todos* os jogadores da rodada. Esta ação requer a senha do administrador e uma justificação, reembolsa integralmente todos os jogadores e zera o prêmio da rodada.
 - **Moderação de Chat:** Apague qualquer mensagem do chat do lobby diretamente pela interface para manter um ambiente amigável.
 - **Gerenciamento de Jogadores:**
     - **Remover Cartela de Jogador:** Remova a última cartela de um jogador com uma justificação obrigatória. O jogador é reembolsado, e a ação fica registrada.
@@ -50,7 +51,7 @@ O objetivo é ser o primeiro jogador a completar uma cartela inteira (todos os 2
 ### Como Jogar
 1.  **Crie uma Conta e Faça Login:** Use seu e-mail ou conta Google para acessar o jogo. Novos jogadores recebem um bônus de 100 Fichas (F).
 2.  **Acesse o Lobby:** Após o login, você estará no lobby. Aqui você pode conversar com outros jogadores e ver seu saldo de fichas.
-3.  **Compre Suas Cartelas:** Antes de a partida começar, clique no botão "Comprar Cartela (10 F)". Cada cartela custa 10 Fichas. Você pode comprar até 50 cartelas por rodada.
+3.  **Compre Suas Cartelas:** Antes de a partida começar, clique no botão "Comprar Cartela (10 F)". Cada cartela custa 10 Fichas. Você pode comprar até 10 cartelas por rodada.
 4.  **Aguarde o Início:** O jogo não começa automaticamente. O administrador iniciará a partida manualmente. A exigência mínima é de **2 jogadores e 2 cartelas vendidas**.
 5.  **Acompanhe e Marque:** Os números sorteados recebem um destaque especial na borda. Para uma experiência mais interativa, você pode clicar nesses números para marcá-los com uma animação, ajudando a visualizar seu progresso!
 6.  **Vitória Automática:** O primeiro jogador a ter todos os 24 números de uma cartela sorteados vence o jogo. O sistema detecta a vitória instantaneamente e encerra a partida, então não é preciso se preocupar em clicar em "BINGO!", apenas torça e acompanhe suas cartelas!

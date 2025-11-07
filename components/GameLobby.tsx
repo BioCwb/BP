@@ -188,8 +188,8 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
   const handleBuyCard = async () => {
     setError(null);
     setIsBuying(true);
-    if (myCardCount >= 50) { 
-        setError('Você não pode ter mais de 50 cartelas.');
+    if (myCardCount >= 10) { 
+        setError('Você não pode ter mais de 10 cartelas.');
         setIsBuying(false);
         return;
     }

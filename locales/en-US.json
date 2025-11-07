@@ -87,7 +87,7 @@
   "error.createGameFailed": "Could not create a new game. Please check your connection and try again.",
   "error.connectGameFailed": "Failed to connect to the game. Please check your connection and disable ad blockers.",
   "error.loadCardsFailed": "Failed to load your cards. Please check your connection and disable ad blockers.",
-  "error.maxCards": "You can't have more than 50 cards.",
+  "error.maxCards": "You can't have more than 10 cards.",
   "error.notEnoughFichas": "Not enough Fichas (F) to buy a card.",
   "error.userOrGameNotFound": "User or game data not found. Please try again."
 }

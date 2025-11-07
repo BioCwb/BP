@@ -87,7 +87,7 @@
   "error.createGameFailed": "Não foi possível criar um novo jogo. Verifique sua conexão e tente novamente.",
   "error.connectGameFailed": "Falha ao conectar-se ao jogo. Verifique sua conexão e desative bloqueadores de anúncio.",
   "error.loadCardsFailed": "Falha ao carregar suas cartelas. Verifique sua conexão e desative bloqueadores de anúncio.",
-  "error.maxCards": "Você não pode ter mais de 50 cartelas.",
+  "error.maxCards": "Você não pode ter mais de 10 cartelas.",
   "error.notEnoughFichas": "Fichas (F) insuficientes para comprar uma cartela.",
   "error.userOrGameNotFound": "Dados do usuário ou do jogo não encontrados. Por favor, tente novamente."
 }

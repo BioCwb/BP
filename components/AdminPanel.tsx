@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type firebase from 'firebase/compat/app';
-import { db, serverTimestamp, increment } from '../firebase/config';
+import { db, serverTimestamp, increment, auth, EmailAuthProvider } from '../firebase/config';
 import type { GameState } from './BingoGame';
 
 interface AdminPanelProps {
@@ -272,6 +272,92 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             }
         }
     };
+    
+    const handleClearAllCards = async () => {
+        if (!gameState || Object.keys(gameState.players).length === 0) {
+            showMessage('error', 'Não há jogadores com cartelas para limpar.');
+            return;
+        }
+
+        const isEmailProvider = user.providerData.some(p => p.providerId === 'password');
+        if (!isEmailProvider) {
+            showMessage('error', 'A verificação de senha só está disponível para administradores com login via e-mail/senha.');
+            return;
+        }
+
+        const password = window.prompt("Para confirmar, digite sua senha de administrador:");
+        if (!password) return;
+
+        const justification = window.prompt("Justifique esta ação (obrigatório):");
+        if (!justification || justification.trim() === '') {
+            showMessage('error', 'A justificação é obrigatória.');
+            return;
+        }
+
+        if (!user.email || !auth.currentUser) {
+            showMessage('error', 'Não foi possível verificar o e-mail do administrador.');
+            return;
+        }
+
+        try {
+            const credential = EmailAuthProvider.credential(user.email, password);
+            await auth.currentUser.reauthenticateWithCredential(credential);
+
+            await db.runTransaction(async (transaction) => {
+                const gameDoc = await transaction.get(gameDocRef);
+                if (!gameDoc.exists) throw new Error("Jogo não encontrado.");
+                
+                const gameData = gameDoc.data() as GameState;
+                const players = gameData.players;
+                const playerIds = Object.keys(players);
+
+                if (playerIds.length === 0) return;
+
+                for (const uid of playerIds) {
+                    const playerInfo = players[uid];
+                    const userRef = db.collection('users').doc(uid);
+                    const cardsRef = db.collection('player_cards').doc(uid).collection('cards').doc('active_game');
+
+                    const userDoc = await transaction.get(userRef);
+                    const cardsDoc = await transaction.get(cardsRef);
+
+                    if (userDoc.exists) {
+                        const refundAmount = (playerInfo.cardCount || 0) * 10;
+                        if (refundAmount > 0) {
+                            transaction.update(userRef, { fichas: increment(refundAmount) });
+                        }
+                    }
+                    if (cardsDoc.exists) {
+                        transaction.update(cardsRef, { cards: [] });
+                    }
+                }
+
+                transaction.update(gameDocRef, {
+                    players: {},
+                    prizePool: 0,
+                });
+
+                const adminLogRef = db.collection('admin_logs').doc();
+                transaction.set(adminLogRef, {
+                    adminUid: user.uid,
+                    adminName: user.displayName,
+                    action: 'clear_all_cards',
+                    justification,
+                    timestamp: serverTimestamp(),
+                });
+            });
+
+            showMessage('success', 'Todas as cartelas foram limpas e os jogadores reembolsados.');
+
+        } catch (err: any) {
+            if (err.code === 'auth/wrong-password') {
+                showMessage('error', 'Senha incorreta. Ação cancelada.');
+            } else {
+                console.error("Erro ao limpar todas as cartelas:", err);
+                showMessage('error', err.message || 'Falha ao limpar as cartelas.');
+            }
+        }
+    };
 
     return (
         <div className="w-full max-w-6xl bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl p-8 text-white">
@@ -286,47 +372,54 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                 </div>
             )}
 
+            {/* Top Stats Row */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6 text-center">
+                <div className="bg-gray-700 p-4 rounded-lg">
+                    <p className="text-sm text-gray-400">Status do Jogo</p>
+                    <p className="text-2xl font-bold capitalize">{gameState?.status || 'N/A'}</p>
+                </div>
+                 <div className="bg-gray-700 p-4 rounded-lg">
+                    <p className="text-sm text-gray-400">Bolas Sorteadas</p>
+                    <p className="text-2xl font-bold">{gameState?.drawnNumbers.length || 0} / 60</p>
+                </div>
+                <div className="bg-gray-700 p-4 rounded-lg">
+                    <p className="text-sm text-gray-400">Jogadores Online</p>
+                    <p className="text-2xl font-bold">{onlinePlayersCount}</p>
+                </div>
+                <div className="bg-gray-700 p-4 rounded-lg">
+                    <p className="text-sm text-gray-400">Prêmio Acumulado</p>
+                    <p className="text-2xl font-bold">{gameState?.prizePool || 0} F</p>
+                </div>
+            </div>
+            
+            {/* Main 3-Column Content Area */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {/* Coluna da Esquerda (Controles) */}
-                <div className="md:col-span-1">
-                    <div className="grid grid-cols-2 gap-4 mb-6 text-center">
-                        <div className="bg-gray-700 p-4 rounded-lg">
-                            <p className="text-sm text-gray-400">Status do Jogo</p>
-                            <p className="text-2xl font-bold capitalize">{gameState?.status || 'N/A'}</p>
-                        </div>
-                         <div className="bg-gray-700 p-4 rounded-lg">
-                            <p className="text-sm text-gray-400">Bolas Sorteadas</p>
-                            <p className="text-2xl font-bold">{gameState?.drawnNumbers.length || 0} / 60</p>
-                        </div>
-                        <div className="bg-gray-700 p-4 rounded-lg">
-                            <p className="text-sm text-gray-400">Jogadores Online</p>
-                            <p className="text-2xl font-bold">{onlinePlayersCount}</p>
-                        </div>
-                        <div className="bg-gray-700 p-4 rounded-lg">
-                            <p className="text-sm text-gray-400">Prêmio Acumulado</p>
-                            <p className="text-2xl font-bold">{gameState?.prizePool || 0} F</p>
-                        </div>
-                    </div>
-                    
-                    <div className="bg-gray-900 p-4 rounded-lg mb-6">
+                {/* Coluna 1: Controles e Configurações */}
+                <div className="flex flex-col gap-6">
+                    <div className="bg-gray-900 p-4 rounded-lg">
                          <h3 className="text-xl font-semibold mb-4 text-center">Controles do Jogo</h3>
-                         <div className="flex gap-4 justify-center">
-                             <button onClick={handleForceStart} disabled={!canForceStart} className="flex-1 py-2 px-4 bg-green-600 hover:bg-green-700 rounded-lg font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed">Forçar Início</button>
-                             
-                              {(gameState?.status === 'running' || gameState?.status === 'paused') && (
-                                <button 
-                                    onClick={handleTogglePause}
-                                    className={`flex-1 py-2 px-4 rounded-lg font-semibold transition-all ${
-                                        gameState.status === 'running'
-                                        ? 'bg-yellow-500 hover:bg-yellow-600 text-black'
-                                        : 'bg-blue-500 hover:bg-blue-600 text-white'
-                                    }`}
-                                >
-                                    {gameState.status === 'running' ? 'Pausar Jogo' : 'Retomar Jogo'}
+                         <div className="space-y-2">
+                            <div className="flex gap-2">
+                                <button onClick={handleForceStart} disabled={!canForceStart} className="flex-1 py-2 px-4 bg-green-600 hover:bg-green-700 rounded-lg font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed">Forçar Início</button>
+                                {(gameState?.status === 'running' || gameState?.status === 'paused') && (
+                                    <button 
+                                        onClick={handleTogglePause}
+                                        className={`flex-1 py-2 px-4 rounded-lg font-semibold transition-all ${
+                                            gameState.status === 'running'
+                                            ? 'bg-yellow-500 hover:bg-yellow-600 text-black'
+                                            : 'bg-blue-500 hover:bg-blue-600 text-white'
+                                        }`}
+                                    >
+                                        {gameState.status === 'running' ? 'Pausar Jogo' : 'Retomar Jogo'}
+                                    </button>
+                                )}
+                            </div>
+                            <div className="flex gap-2">
+                                <button onClick={handleResetGame} className="flex-1 py-2 px-4 bg-red-600 hover:bg-red-700 rounded-lg font-semibold">Resetar Jogo</button>
+                                <button onClick={handleClearAllCards} disabled={gameState?.status !== 'waiting' || totalPlayers === 0} className="flex-1 py-2 px-4 bg-orange-600 hover:bg-orange-700 rounded-lg font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed">
+                                    Limpar Todas as Cartelas
                                 </button>
-                             )}
-
-                             <button onClick={handleResetGame} className="flex-1 py-2 px-4 bg-red-600 hover:bg-red-700 rounded-lg font-semibold">Resetar Jogo</button>
+                            </div>
                          </div>
                          {!canForceStart && gameState?.status === 'waiting' && (
                             <p className="text-center text-sm text-yellow-400 mt-2">
@@ -335,7 +428,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                             </p>
                          )}
                     </div>
-
                     <div className="bg-gray-900 p-4 rounded-lg">
                         <h3 className="text-xl font-semibold mb-4 text-center">Configurações de Tempo (segundos)</h3>
                         <div className="space-y-4">
@@ -355,8 +447,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                         <button onClick={handleSaveSettings} className="mt-6 w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold">Salvar Configurações</button>
                     </div>
                 </div>
-
-                {/* Coluna do Meio (Gerenciamento) */}
+                {/* Coluna 2: Gerenciamento de Jogadores */}
                 <div className="bg-gray-900 p-4 rounded-lg">
                     <h3 className="text-xl font-semibold mb-4 text-center">Gerenciamento de Jogadores</h3>
                     <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2">
@@ -409,7 +500,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                         )}
                     </div>
                 </div>
-                {/* Coluna da Direita (Histórico) */}
+                {/* Coluna 3: Histórico de Vendas */}
                  <div className="bg-gray-900 p-4 rounded-lg">
                     <h3 className="text-xl font-semibold mb-4 text-center">Histórico de Vendas</h3>
                      <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2">
