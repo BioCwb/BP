@@ -308,7 +308,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
         return { totalPlayers: playersArray.length, totalCards: cardCount };
     }, [gameState?.players]);
 
-    const canForceStart = gameState?.status === 'waiting' && totalPlayers >= 2 && totalCards >= 2;
+    const canForceStart = gameState?.status === 'waiting' && totalPlayers >= 2;
 
     const handleForceStart = async () => {
         if (canForceStart) {
@@ -327,7 +327,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                 showMessage('error', 'Falha ao iniciar o jogo.');
             }
         } else {
-            showMessage('error', 'O jogo requer no mínimo 2 jogadores e 2 cartelas vendidas para iniciar.');
+            showMessage('error', 'O jogo requer no mínimo 2 jogadores para iniciar.');
         }
     };
     
@@ -598,8 +598,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                          </div>
                          {!canForceStart && gameState?.status === 'waiting' && (
                             <p className="text-center text-sm text-yellow-400 mt-2">
-                                Para iniciar: mínimo de 2 jogadores e 2 cartelas vendidas.<br />
-                                (Atualmente: {totalPlayers} jogador(es), {totalCards} cartela(s))
+                                Para iniciar: mínimo de 2 jogadores.<br />
+                                (Atualmente: {totalPlayers} jogador(es))
                             </p>
                          )}
                     </div>
