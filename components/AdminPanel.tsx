@@ -63,13 +63,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [adminLogSearch, setAdminLogSearch] = useState('');
     const [selectedCardModal, setSelectedCardModal] = useState<BingoCardData | null>(null);
 
-    // State for the "Clear All Cards" confirmation modal
-    const [isClearAllModalOpen, setIsClearAllModalOpen] = useState(false);
-    const [clearAllPassword, setClearAllPassword] = useState('');
-    const [clearAllJustification, setClearAllJustification] = useState('');
-    const [clearAllError, setClearAllError] = useState<string | null>(null);
-    const [isClearingCards, setIsClearingCards] = useState(false);
-
     // State for bonus configuration
     const [welcomeBonus, setWelcomeBonus] = useState(100);
     const [dailyBonus, setDailyBonus] = useState(10);
@@ -547,6 +540,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     }, [gameState?.players]);
 
     const canForceStart = gameState?.status === 'waiting' && totalPlayers >= 2 && totalCards >= 2;
+    const canClearCards = gameState?.status === 'waiting' && totalPlayers > 0;
 
     const handleForceStart = async () => {
         if (canForceStart) {
@@ -671,103 +665,58 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
         }
     };
     
-    const handleClearAllCardsClick = () => {
-        if (!gameState || Object.keys(gameState.players).length === 0) {
-            showMessage('error', 'Não há jogadores com cartelas para limpar.');
+    const handleClearAllCards = async () => {
+        if (!canClearCards) {
+            showMessage('error', 'Esta ação só pode ser executada quando o jogo está aguardando e há jogadores com cartelas.');
             return;
         }
     
-        const isEmailProvider = user.providerData.some(p => p.providerId === 'password');
-        if (!isEmailProvider) {
-            showMessage('error', 'A verificação de senha só está disponível para administradores com login via e-mail/senha.');
-            return;
-        }
-        setIsClearAllModalOpen(true);
-    };
-
-    const confirmAndExecuteClearAllCards = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setClearAllError(null);
-        setIsClearingCards(true);
-    
-        if (!clearAllPassword) {
-            setClearAllError('A senha é obrigatória.');
-            setIsClearingCards(false);
-            return;
-        }
-        if (!clearAllJustification || clearAllJustification.trim() === '') {
-            setClearAllError('A justificação é obrigatória.');
-            setIsClearingCards(false);
-            return;
-        }
-        if (!user.email || !auth.currentUser) {
-            setClearAllError('Não foi possível verificar o e-mail do administrador.');
-            setIsClearingCards(false);
-            return;
-        }
-    
-        try {
-            const credential = EmailAuthProvider.credential(user.email, clearAllPassword);
-            await auth.currentUser.reauthenticateWithCredential(credential);
-    
-            await db.runTransaction(async (transaction) => {
-                const gameDoc = await transaction.get(gameDocRef);
-                if (!gameDoc.exists) throw new Error("Jogo não encontrado.");
-                
-                const gameData = gameDoc.data() as GameState;
-                const players = gameData.players;
-                const playerIds = Object.keys(players);
-    
-                if (playerIds.length === 0) return;
-    
-                for (const uid of playerIds) {
-                    const playerInfo = players[uid];
-                    const userRef = db.collection('users').doc(uid);
-                    const cardsRef = db.collection('player_cards').doc(uid).collection('cards').doc('active_game');
-    
-                    const userDoc = await transaction.get(userRef);
-                    const cardsDoc = await transaction.get(cardsRef);
-    
-                    if (userDoc.exists) {
+        if (window.confirm('Tem certeza de que deseja limpar TODAS as cartelas? Todos os jogadores serão reembolsados e o prêmio será zerado.')) {
+            try {
+                await db.runTransaction(async (transaction) => {
+                    const gameDoc = await transaction.get(gameDocRef);
+                    if (!gameDoc.exists) throw new Error("Jogo não encontrado.");
+                    
+                    const gameData = gameDoc.data() as GameState;
+                    const players = gameData.players;
+                    const playerIds = Object.keys(players);
+        
+                    if (playerIds.length === 0) return;
+        
+                    for (const uid of playerIds) {
+                        const playerInfo = players[uid];
+                        const userRef = db.collection('users').doc(uid);
+                        const cardsRef = db.collection('player_cards').doc(uid).collection('cards').doc('active_game');
+        
                         const refundAmount = (playerInfo.cardCount || 0) * 10;
                         if (refundAmount > 0) {
                             transaction.update(userRef, { fichas: increment(refundAmount) });
                         }
+                        
+                        transaction.set(cardsRef, { cards: [] });
                     }
-                    if (cardsDoc.exists) {
-                        transaction.update(cardsRef, { cards: [] });
-                    }
-                }
-    
-                transaction.update(gameDocRef, {
-                    players: {},
-                    prizePool: 0,
+        
+                    transaction.update(gameDocRef, {
+                        players: {},
+                        prizePool: 0,
+                    });
+        
+                    const adminLogRef = db.collection('admin_logs').doc();
+                    transaction.set(adminLogRef, {
+                        adminUid: user.uid,
+                        adminName: user.displayName,
+                        action: 'clear_all_cards',
+                        justification: 'Ação de limpeza de cartelas executada pelo painel.',
+                        timestamp: serverTimestamp(),
+                    });
                 });
-    
-                const adminLogRef = db.collection('admin_logs').doc();
-                transaction.set(adminLogRef, {
-                    adminUid: user.uid,
-                    adminName: user.displayName,
-                    action: 'clear_all_cards',
-                    justification: clearAllJustification,
-                    timestamp: serverTimestamp(),
-                });
-            });
-    
-            showMessage('success', 'Todas as cartelas foram limpas e os jogadores reembolsados.');
-            setIsClearAllModalOpen(false);
-            setClearAllPassword('');
-            setClearAllJustification('');
-    
-        } catch (err: any) {
-            if (err.code === 'auth/wrong-password') {
-                setClearAllError('Senha incorreta. Ação cancelada.');
-            } else {
+        
+                showMessage('success', 'Todas as cartelas foram limpas e os jogadores reembolsados.');
+        
+            } catch (err: any) {
                 console.error("Erro ao limpar todas as cartelas:", err);
-                setClearAllError(err.message || 'Falha ao limpar as cartelas.');
+                showMessage('error', err.message || 'Falha ao limpar as cartelas.');
             }
-        } finally {
-            setIsClearingCards(false);
         }
     };
 
@@ -816,24 +765,36 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                     <div className="bg-gray-900 p-4 rounded-lg">
                          <h3 className="text-xl font-semibold mb-4 text-center">Controles do Jogo</h3>
                          <div className="space-y-2">
-                            <div className="flex gap-2">
-                                <button onClick={handleForceStart} disabled={!canForceStart} className="flex-1 py-2 px-4 bg-green-600 hover:bg-green-700 rounded-lg font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed">Forçar Início</button>
-                                {(gameState?.status === 'running' || gameState?.status === 'paused') && (
-                                    <button 
-                                        onClick={handleTogglePause}
-                                        className={`flex-1 py-2 px-4 rounded-lg font-semibold transition-all ${
-                                            gameState.status === 'running'
-                                            ? 'bg-yellow-500 hover:bg-yellow-600 text-black'
-                                            : 'bg-blue-500 hover:bg-blue-600 text-white'
-                                        }`}
-                                    >
-                                        {gameState.status === 'running' ? 'Pausar Jogo' : 'Retomar Jogo'}
-                                    </button>
-                                )}
-                            </div>
+                             <button
+                                onClick={handleForceStart}
+                                disabled={!canForceStart}
+                                className="w-full py-2 px-4 bg-gray-600 hover:bg-gray-700 rounded-lg font-semibold disabled:bg-gray-600/50 disabled:cursor-not-allowed"
+                            >
+                                Forçar Início
+                            </button>
+                             {(gameState?.status === 'running' || gameState?.status === 'paused') && (
+                                <button 
+                                    onClick={handleTogglePause}
+                                    className={`w-full py-2 px-4 rounded-lg font-semibold transition-all ${
+                                        gameState.status === 'running'
+                                        ? 'bg-yellow-500 hover:bg-yellow-600 text-black'
+                                        : 'bg-blue-500 hover:bg-blue-600 text-white'
+                                    }`}
+                                >
+                                    {gameState.status === 'running' ? 'Pausar Jogo' : 'Retomar Jogo'}
+                                </button>
+                            )}
                             <div className="flex gap-2">
                                 <button onClick={handleResetGame} className="flex-1 py-2 px-4 bg-red-600 hover:bg-red-700 rounded-lg font-semibold">Resetar Jogo</button>
-                                <button onClick={handleClearAllCardsClick} disabled={gameState?.status !== 'waiting' || totalPlayers === 0} className="flex-1 py-2 px-4 bg-orange-600 hover:bg-orange-700 rounded-lg font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed">
+                                <button
+                                    onClick={handleClearAllCards}
+                                    disabled={!canClearCards}
+                                    className={`flex-1 py-2 px-4 rounded-lg font-semibold transition-colors duration-300 ${
+                                        canClearCards
+                                            ? 'bg-green-600 hover:bg-green-700'
+                                            : 'bg-gray-600/50 cursor-not-allowed'
+                                    }`}
+                                >
                                     Limpar Todas as Cartelas
                                 </button>
                             </div>
@@ -1085,76 +1046,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                         <button onClick={() => setSelectedCardModal(null)} className="mt-6 w-full py-2 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold">
                             Fechar
                         </button>
-                    </div>
-                </div>
-            )}
-            {isClearAllModalOpen && (
-                 <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
-                    <div className="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-lg text-white border border-red-500">
-                        <form onSubmit={confirmAndExecuteClearAllCards}>
-                            <h3 className="text-2xl font-bold text-red-400 mb-4">Confirmar Limpeza de Todas as Cartelas</h3>
-                            <p className="text-gray-300 mb-4">
-                                Esta ação é <strong className="text-yellow-400">irreversível</strong>. Todas as cartelas da rodada atual serão removidas, o prêmio será zerado e os jogadores serão reembolsados.
-                            </p>
-                            
-                            <div className="space-y-4">
-                                <div>
-                                    <label htmlFor="admin-password-confirm" className="block text-sm font-medium text-gray-300 mb-1">Sua Senha de Administrador</label>
-                                    <input
-                                        id="admin-password-confirm"
-                                        type="password"
-                                        value={clearAllPassword}
-                                        onChange={(e) => setClearAllPassword(e.target.value)}
-                                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg"
-                                        required
-                                    />
-                                </div>
-                                <div>
-                                    <label htmlFor="admin-justification" className="block text-sm font-medium text-gray-300 mb-1">Justificação (Obrigatório)</label>
-                                    <textarea
-                                        id="admin-justification"
-                                        value={clearAllJustification}
-                                        onChange={(e) => setClearAllJustification(e.target.value)}
-                                        rows={3}
-                                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg"
-                                        required
-                                    />
-                                </div>
-                            </div>
-
-                            {clearAllError && <p className="mt-4 text-center text-red-400 bg-red-900 bg-opacity-50 p-2 rounded-lg">{clearAllError}</p>}
-
-                            <div className="mt-6 flex justify-end gap-4">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setIsClearAllModalOpen(false);
-                                        setClearAllError(null);
-                                        setClearAllPassword('');
-                                        setClearAllJustification('');
-                                    }}
-                                    className="py-2 px-4 bg-gray-600 hover:bg-gray-700 rounded-lg font-semibold"
-                                    disabled={isClearingCards}
-                                >
-                                    Cancelar
-                                </button>
-                                <button
-                                    type="submit"
-                                    className="py-2 px-6 bg-red-700 hover:bg-red-800 rounded-lg font-bold disabled:bg-red-900 disabled:cursor-not-allowed flex items-center"
-                                    disabled={isClearingCards}
-                                >
-                                    {isClearingCards ? (
-                                        <>
-                                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                            </svg>
-                                            Limpando...
-                                        </>
-                                    ) : 'Confirmar e Limpar'}
-                                </button>
-                            </div>
-                        </form>
                     </div>
                 </div>
             )}
