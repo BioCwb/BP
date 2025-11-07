@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import firebase from 'firebase/compat/app';
 import { type UserData } from '../App';
-import { db, increment, serverTimestamp } from '../firebase/config';
+import { db, increment, serverTimestamp, FieldPath } from '../firebase/config';
 // FIX: Removed unused v9 firestore imports to align with the v8 compatibility syntax.
 import { BingoCard } from './BingoCard';
 import { calculateCardProgress } from '../utils/bingoUtils';
@@ -139,7 +139,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
         };
 
         const unsub = statusRef
-            .where(firebase.firestore.FieldPath.documentId(), 'in', playerIds)
+            .where(FieldPath.documentId(), 'in', playerIds)
             .onSnapshot((snapshot) => {
                 snapshot.forEach(doc => {
                     const lastSeen = doc.data().lastSeen?.toMillis();

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type firebase from 'firebase/compat/app';
-import { db, serverTimestamp, increment, auth, EmailAuthProvider } from '../firebase/config';
+import { db, serverTimestamp, increment, auth, EmailAuthProvider, FieldPath } from '../firebase/config';
 import type { GameState } from './BingoGame';
 import { TrashIcon } from './icons/TrashIcon';
 import { EyeIcon } from './icons/EyeIcon';
@@ -137,7 +137,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                     return;
                 }
     
-                const usersSnapshot = await usersCollectionRef.where(db.FieldPath.documentId(), 'in', onlineUserIds).get();
+                const usersSnapshot = await usersCollectionRef.where(FieldPath.documentId(), 'in', onlineUserIds).get();
                 
                 const onlineUsersData = usersSnapshot.docs.map(doc => ({
                     uid: doc.id,
