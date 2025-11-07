@@ -58,6 +58,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [adminLogSearch, setAdminLogSearch] = useState('');
     const [selectedCardModal, setSelectedCardModal] = useState<BingoCardData | null>(null);
 
+    // State for the "Clear All Cards" confirmation modal
+    const [isClearAllModalOpen, setIsClearAllModalOpen] = useState(false);
+    const [clearAllPassword, setClearAllPassword] = useState('');
+    const [clearAllJustification, setClearAllJustification] = useState('');
+    const [clearAllError, setClearAllError] = useState<string | null>(null);
+    const [isClearingCards, setIsClearingCards] = useState(false);
+
     const gameDocRef = useMemo(() => db.collection('games').doc('active_game'), []);
     const purchaseHistoryCollectionRef = useMemo(() => db.collection('purchase_history'), []);
     const chatCollectionRef = useMemo(() => db.collection('chat'), []);
@@ -426,36 +433,45 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
         }
     };
     
-    const handleClearAllCards = async () => {
+    const handleClearAllCardsClick = () => {
         if (!gameState || Object.keys(gameState.players).length === 0) {
             showMessage('error', 'Não há jogadores com cartelas para limpar.');
             return;
         }
-
+    
         const isEmailProvider = user.providerData.some(p => p.providerId === 'password');
         if (!isEmailProvider) {
             showMessage('error', 'A verificação de senha só está disponível para administradores com login via e-mail/senha.');
             return;
         }
+        setIsClearAllModalOpen(true);
+    };
 
-        const password = window.prompt("Para confirmar, digite sua senha de administrador:");
-        if (!password) return;
-
-        const justification = window.prompt("Justifique esta ação (obrigatório):");
-        if (!justification || justification.trim() === '') {
-            showMessage('error', 'A justificação é obrigatória.');
+    const confirmAndExecuteClearAllCards = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setClearAllError(null);
+        setIsClearingCards(true);
+    
+        if (!clearAllPassword) {
+            setClearAllError('A senha é obrigatória.');
+            setIsClearingCards(false);
             return;
         }
-
+        if (!clearAllJustification || clearAllJustification.trim() === '') {
+            setClearAllError('A justificação é obrigatória.');
+            setIsClearingCards(false);
+            return;
+        }
         if (!user.email || !auth.currentUser) {
-            showMessage('error', 'Não foi possível verificar o e-mail do administrador.');
+            setClearAllError('Não foi possível verificar o e-mail do administrador.');
+            setIsClearingCards(false);
             return;
         }
-
+    
         try {
-            const credential = EmailAuthProvider.credential(user.email, password);
+            const credential = EmailAuthProvider.credential(user.email, clearAllPassword);
             await auth.currentUser.reauthenticateWithCredential(credential);
-
+    
             await db.runTransaction(async (transaction) => {
                 const gameDoc = await transaction.get(gameDocRef);
                 if (!gameDoc.exists) throw new Error("Jogo não encontrado.");
@@ -463,17 +479,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                 const gameData = gameDoc.data() as GameState;
                 const players = gameData.players;
                 const playerIds = Object.keys(players);
-
+    
                 if (playerIds.length === 0) return;
-
+    
                 for (const uid of playerIds) {
                     const playerInfo = players[uid];
                     const userRef = db.collection('users').doc(uid);
                     const cardsRef = db.collection('player_cards').doc(uid).collection('cards').doc('active_game');
-
+    
                     const userDoc = await transaction.get(userRef);
                     const cardsDoc = await transaction.get(cardsRef);
-
+    
                     if (userDoc.exists) {
                         const refundAmount = (playerInfo.cardCount || 0) * 10;
                         if (refundAmount > 0) {
@@ -484,33 +500,39 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                         transaction.update(cardsRef, { cards: [] });
                     }
                 }
-
+    
                 transaction.update(gameDocRef, {
                     players: {},
                     prizePool: 0,
                 });
-
+    
                 const adminLogRef = db.collection('admin_logs').doc();
                 transaction.set(adminLogRef, {
                     adminUid: user.uid,
                     adminName: user.displayName,
                     action: 'clear_all_cards',
-                    justification,
+                    justification: clearAllJustification,
                     timestamp: serverTimestamp(),
                 });
             });
-
+    
             showMessage('success', 'Todas as cartelas foram limpas e os jogadores reembolsados.');
-
+            setIsClearAllModalOpen(false);
+            setClearAllPassword('');
+            setClearAllJustification('');
+    
         } catch (err: any) {
             if (err.code === 'auth/wrong-password') {
-                showMessage('error', 'Senha incorreta. Ação cancelada.');
+                setClearAllError('Senha incorreta. Ação cancelada.');
             } else {
                 console.error("Erro ao limpar todas as cartelas:", err);
-                showMessage('error', err.message || 'Falha ao limpar as cartelas.');
+                setClearAllError(err.message || 'Falha ao limpar as cartelas.');
             }
+        } finally {
+            setIsClearingCards(false);
         }
     };
+
 
     return (
         <div className="w-full max-w-7xl bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl p-8 text-white">
@@ -569,7 +591,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                             </div>
                             <div className="flex gap-2">
                                 <button onClick={handleResetGame} className="flex-1 py-2 px-4 bg-red-600 hover:bg-red-700 rounded-lg font-semibold">Resetar Jogo</button>
-                                <button onClick={handleClearAllCards} disabled={gameState?.status !== 'waiting' || totalPlayers === 0} className="flex-1 py-2 px-4 bg-orange-600 hover:bg-orange-700 rounded-lg font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed">
+                                <button onClick={handleClearAllCardsClick} disabled={gameState?.status !== 'waiting' || totalPlayers === 0} className="flex-1 py-2 px-4 bg-orange-600 hover:bg-orange-700 rounded-lg font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed">
                                     Limpar Todas as Cartelas
                                 </button>
                             </div>
@@ -801,6 +823,76 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                         <button onClick={() => setSelectedCardModal(null)} className="mt-6 w-full py-2 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold">
                             Fechar
                         </button>
+                    </div>
+                </div>
+            )}
+            {isClearAllModalOpen && (
+                 <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+                    <div className="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-lg text-white border border-red-500">
+                        <form onSubmit={confirmAndExecuteClearAllCards}>
+                            <h3 className="text-2xl font-bold text-red-400 mb-4">Confirmar Limpeza de Todas as Cartelas</h3>
+                            <p className="text-gray-300 mb-4">
+                                Esta ação é <strong className="text-yellow-400">irreversível</strong>. Todas as cartelas da rodada atual serão removidas, o prêmio será zerado e os jogadores serão reembolsados.
+                            </p>
+                            
+                            <div className="space-y-4">
+                                <div>
+                                    <label htmlFor="admin-password-confirm" className="block text-sm font-medium text-gray-300 mb-1">Sua Senha de Administrador</label>
+                                    <input
+                                        id="admin-password-confirm"
+                                        type="password"
+                                        value={clearAllPassword}
+                                        onChange={(e) => setClearAllPassword(e.target.value)}
+                                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg"
+                                        required
+                                    />
+                                </div>
+                                <div>
+                                    <label htmlFor="admin-justification" className="block text-sm font-medium text-gray-300 mb-1">Justificação (Obrigatório)</label>
+                                    <textarea
+                                        id="admin-justification"
+                                        value={clearAllJustification}
+                                        onChange={(e) => setClearAllJustification(e.target.value)}
+                                        rows={3}
+                                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg"
+                                        required
+                                    />
+                                </div>
+                            </div>
+
+                            {clearAllError && <p className="mt-4 text-center text-red-400 bg-red-900 bg-opacity-50 p-2 rounded-lg">{clearAllError}</p>}
+
+                            <div className="mt-6 flex justify-end gap-4">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsClearAllModalOpen(false);
+                                        setClearAllError(null);
+                                        setClearAllPassword('');
+                                        setClearAllJustification('');
+                                    }}
+                                    className="py-2 px-4 bg-gray-600 hover:bg-gray-700 rounded-lg font-semibold"
+                                    disabled={isClearingCards}
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="py-2 px-6 bg-red-700 hover:bg-red-800 rounded-lg font-bold disabled:bg-red-900 disabled:cursor-not-allowed flex items-center"
+                                    disabled={isClearingCards}
+                                >
+                                    {isClearingCards ? (
+                                        <>
+                                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                            </svg>
+                                            Limpando...
+                                        </>
+                                    ) : 'Confirmar e Limpar'}
+                                </button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}
