@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import type firebase from 'firebase/compat/app';
 import { db, serverTimestamp, increment, auth, EmailAuthProvider } from '../firebase/config';
 import type { GameState } from './BingoGame';
+import { TrashIcon } from './icons/TrashIcon';
 
 interface AdminPanelProps {
     user: firebase.User;
@@ -20,6 +21,14 @@ interface PurchaseHistoryItem {
     timestamp: firebase.firestore.Timestamp;
 }
 
+interface ChatMessage {
+    id: string;
+    uid: string;
+    displayName: string;
+    text: string;
+    timestamp: firebase.firestore.Timestamp;
+}
+
 export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [gameState, setGameState] = useState<GameState | null>(null);
     const [onlinePlayersCount, setOnlinePlayersCount] = useState(0);
@@ -31,9 +40,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [playerCardDetails, setPlayerCardDetails] = useState<{ [uid: string]: BingoCardData[] }>({});
     const [isLoadingCards, setIsLoadingCards] = useState(false);
     const [purchaseHistory, setPurchaseHistory] = useState<PurchaseHistoryItem[]>([]);
+    const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
 
     const gameDocRef = useMemo(() => db.collection('games').doc('active_game'), []);
     const purchaseHistoryCollectionRef = useMemo(() => db.collection('purchase_history'), []);
+    const chatCollectionRef = useMemo(() => db.collection('chat'), []);
 
     useEffect(() => {
         const unsubscribe = gameDocRef.onSnapshot((doc) => {
@@ -53,11 +64,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             setPurchaseHistory(history);
         });
 
+        const unsubChat = chatCollectionRef.orderBy('timestamp', 'desc').limit(100).onSnapshot((snapshot) => {
+            const messages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ChatMessage));
+            setChatMessages(messages);
+        });
+
         return () => { 
             unsubscribe();
             unsubHistory();
+            unsubChat();
         };
-    }, [gameDocRef, purchaseHistoryCollectionRef]);
+    }, [gameDocRef, purchaseHistoryCollectionRef, chatCollectionRef]);
 
     useEffect(() => {
         const statusCollectionRef = db.collection('player_status');
@@ -82,6 +99,37 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const showMessage = (type: 'success' | 'error', text: string) => {
         setMessage({ type, text });
         setTimeout(() => setMessage(null), 4000);
+    };
+    
+    const handleDeleteChatMessage = async (message: ChatMessage) => {
+        if (window.confirm(`Tem certeza de que deseja apagar a mensagem de "${message.displayName}"?\n\n"${message.text}"`)) {
+            try {
+                const batch = db.batch();
+                const chatDocRef = db.collection('chat').doc(message.id);
+                const adminLogRef = db.collection('admin_logs').doc();
+
+                batch.delete(chatDocRef);
+
+                batch.set(adminLogRef, {
+                    adminUid: user.uid,
+                    adminName: user.displayName,
+                    action: 'delete_chat_message',
+                    details: {
+                        deletedMessageId: message.id,
+                        deletedMessageText: message.text,
+                        deletedMessageAuthorUid: message.uid,
+                        deletedMessageAuthorName: message.displayName,
+                    },
+                    timestamp: serverTimestamp(),
+                });
+
+                await batch.commit();
+                showMessage('success', 'Mensagem apagada com sucesso.');
+            } catch (error) {
+                console.error("Error deleting chat message:", error);
+                showMessage('error', 'Falha ao apagar a mensagem.');
+            }
+        }
     };
 
     const handleTogglePlayer = async (uid: string) => {
@@ -500,21 +548,48 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                         )}
                     </div>
                 </div>
-                {/* Coluna 3: Histórico de Vendas */}
-                 <div className="bg-gray-900 p-4 rounded-lg">
-                    <h3 className="text-xl font-semibold mb-4 text-center">Histórico de Vendas</h3>
-                     <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2">
-                        {purchaseHistory.length > 0 ? (
-                            purchaseHistory.map(item => (
-                                <div key={item.id} className="bg-gray-700 p-2 rounded-md text-sm">
-                                    <p className="font-semibold text-purple-300">{item.playerName}</p>
-                                    <p className="text-xs text-gray-400 font-mono">ID: {item.cardId.substring(0, 12)}</p>
-                                    <p className="text-xs text-gray-500 text-right">{item.timestamp ? new Date(item.timestamp.toDate()).toLocaleTimeString('pt-BR') : '...'}</p>
-                                </div>
-                            ))
-                        ) : (
-                             <p className="text-center text-gray-400 italic">Nenhuma cartela vendida nesta rodada.</p>
-                        )}
+                {/* Coluna 3: Logs e Moderação */}
+                <div className="flex flex-col gap-6">
+                    <div className="bg-gray-900 p-4 rounded-lg flex flex-col min-h-0">
+                        <h3 className="text-xl font-semibold mb-4 text-center flex-shrink-0">Histórico de Vendas</h3>
+                        <div className="space-y-2 overflow-y-auto pr-2 flex-grow">
+                            {purchaseHistory.length > 0 ? (
+                                purchaseHistory.map(item => (
+                                    <div key={item.id} className="bg-gray-700 p-2 rounded-md text-sm">
+                                        <p className="font-semibold text-purple-300">{item.playerName}</p>
+                                        <p className="text-xs text-gray-400 font-mono">ID: {item.cardId.substring(0, 12)}</p>
+                                        <p className="text-xs text-gray-500 text-right">{item.timestamp ? new Date(item.timestamp.toDate()).toLocaleTimeString('pt-BR') : '...'}</p>
+                                    </div>
+                                ))
+                            ) : (
+                                 <p className="text-center text-gray-400 italic">Nenhuma cartela vendida nesta rodada.</p>
+                            )}
+                        </div>
+                    </div>
+                    <div className="bg-gray-900 p-4 rounded-lg flex flex-col min-h-0">
+                        <h3 className="text-xl font-semibold mb-4 text-center flex-shrink-0">Moderação do Chat</h3>
+                        <div className="space-y-2 overflow-y-auto pr-2 flex-grow">
+                            {chatMessages.length > 0 ? (
+                                chatMessages.map(msg => (
+                                    <div key={msg.id} className="bg-gray-700 p-2 rounded-md text-sm flex items-start justify-between gap-2">
+                                        <div className="flex-grow">
+                                            <p className="font-semibold text-purple-300">{msg.displayName}</p>
+                                            <p className="text-xs text-gray-400">{msg.timestamp ? new Date(msg.timestamp.toDate()).toLocaleString('pt-BR') : '...'}</p>
+                                            <p className="text-white break-words mt-1">{msg.text}</p>
+                                        </div>
+                                        <button 
+                                            onClick={() => handleDeleteChatMessage(msg)}
+                                            className="text-gray-500 hover:text-red-500 transition-colors p-1 rounded-full flex-shrink-0"
+                                            aria-label="Excluir mensagem"
+                                        >
+                                            <TrashIcon className="w-5 h-5" />
+                                        </button>
+                                    </div>
+                                ))
+                            ) : (
+                                <p className="text-center text-gray-400 italic">Nenhuma mensagem no chat.</p>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>

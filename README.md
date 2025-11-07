@@ -26,7 +26,7 @@ Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real cons
   - **Pausar/Retomar:** Pause o jogo, informando um motivo que será exibido para todos os jogadores, e retome quando desejar.
   - **Resetar Jogo:** Reinicie a rodada, limpando o estado atual do jogo.
   - **Limpar Todas as Cartelas:** Remova *todas* as cartelas de *todos* os jogadores da rodada. Esta ação requer a senha do administrador e uma justificação, reembolsa integralmente todos os jogadores e zera o prêmio da rodada.
-- **Moderação de Chat:** Apague qualquer mensagem do chat do lobby diretamente pela interface para manter um ambiente amigável.
+- **Moderação de Chat:** Monitore e apague mensagens do chat do lobby diretamente do painel de administração. Cada exclusão é registrada em um log de auditoria para transparência.
 - **Gerenciamento de Jogadores:**
     - **Remover Cartela de Jogador:** Remova a última cartela de um jogador com uma justificação obrigatória. O jogador é reembolsado, e a ação fica registrada.
 - **Histórico de Vendas:** Monitore um log em tempo real de todas as cartelas compradas na rodada, incluindo quem comprou, o ID da cartela e quando.
