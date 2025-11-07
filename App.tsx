@@ -316,7 +316,8 @@ export default function App() {
     }
 
     return (
-      <div className="w-full max-w-md bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl overflow-hidden">
+      <div className="w-full max-w-md">
+        <div className="bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl overflow-hidden">
             <div className="flex">
               <TabButton mode="login" currentMode={authMode} onClick={handleTabChange}>Entrar</TabButton>
               <TabButton mode="register" currentMode={authMode} onClick={handleTabChange}>Registrar</TabButton>
@@ -328,9 +329,6 @@ export default function App() {
                     <InputField id="login-email" label="E-mail" type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="Digite seu e-mail" icon={<EmailIcon />} />
                     <InputField id="login-password" label="Senha" type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="Digite sua senha" icon={<LockIcon />} />
                   </AuthForm>
-                   <div className="mt-4 text-center text-sm text-gray-400">
-                    Versão: 1.0.0
-                  </div>
                   <div className="relative flex py-4 items-center">
                     <div className="flex-grow border-t border-gray-600"></div>
                     <span className="flex-shrink mx-4 text-gray-400 text-sm">Ou</span>
@@ -352,6 +350,10 @@ export default function App() {
               {error && (<p className="mt-4 text-center text-red-400 bg-red-900 bg-opacity-50 p-3 rounded-lg">{error}</p>)}
             </div>
           </div>
+          <div className="mt-4 text-center text-sm text-gray-400">
+            Versão: 1.0.1
+          </div>
+        </div>
       );
   };
 
