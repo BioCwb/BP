@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import firebase from 'firebase/compat/app';
 import { type UserData } from '../App';
 import { db, increment } from '../firebase/config';
@@ -55,6 +55,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
     const [playerMarkedNumbers, setPlayerMarkedNumbers] = useState<{ [cardIndex: number]: number[] }>({});
     const [playerStatuses, setPlayerStatuses] = useState<{ [uid: string]: 'online' | 'offline' }>({});
     const [allPlayerCards, setAllPlayerCards] = useState<{[uid: string]: {displayName: string, cards: BingoCardData[]}}>({});
+    const lastSeenTimestampsRef = useRef<{ [uid: string]: number }>({});
 
 
     const gameDocRef = useMemo(() => db.collection('games').doc('active_game'), []);
@@ -123,44 +124,45 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
     
     // Player status (presence) listener
     useEffect(() => {
-        if (!gameState || Object.keys(gameState.players).length === 0) return;
+        if (!gameState || !gameState.players || Object.keys(gameState.players).length === 0) {
+            setPlayerStatuses({});
+            return;
+        };
 
         const playerIds = Object.keys(gameState.players);
         const statusRef = db.collection('player_status');
 
-        const updateStatuses = (snapshot?: firebase.firestore.QuerySnapshot) => {
+        const calculateAndUpdateStatuses = () => {
             const now = Date.now();
             const currentStatuses: { [uid: string]: 'online' | 'offline' } = {};
-            const lastSeenTimestamps: { [uid: string]: number } = {};
-
-            if (snapshot) {
-                snapshot.forEach(doc => {
-                    const data = doc.data();
-                    const lastSeen = data.lastSeen?.toMillis();
-                    if (lastSeen) {
-                       lastSeenTimestamps[doc.id] = lastSeen;
-                    }
-                });
-            }
-
             playerIds.forEach(id => {
-                const lastSeen = lastSeenTimestamps[id];
-                 currentStatuses[id] = (lastSeen && (now - lastSeen < 30000)) ? 'online' : 'offline';
+                const lastSeen = lastSeenTimestampsRef.current[id];
+                currentStatuses[id] = (lastSeen && (now - lastSeen < 30000)) ? 'online' : 'offline';
             });
-            
             setPlayerStatuses(currentStatuses);
         };
-        
-        const unsub = statusRef.where(firebase.firestore.FieldPath.documentId(), 'in', playerIds).onSnapshot(updateStatuses);
 
-        // Periodically check statuses to catch timeouts without a new snapshot
-        const interval = setInterval(() => updateStatuses(), 10000);
+        const unsub = statusRef
+            .where(firebase.firestore.FieldPath.documentId(), 'in', playerIds)
+            .onSnapshot((snapshot) => {
+                snapshot.forEach(doc => {
+                    const lastSeen = doc.data().lastSeen?.toMillis();
+                    if (lastSeen) {
+                       lastSeenTimestampsRef.current[doc.id] = lastSeen;
+                    }
+                });
+                // After getting fresh data from Firestore, recalculate all statuses
+                calculateAndUpdateStatuses();
+            });
+
+        // Periodically check statuses to catch timeouts
+        const interval = setInterval(calculateAndUpdateStatuses, 10000);
 
         return () => {
             unsub();
             clearInterval(interval);
         };
-    }, [gameState]);
+    }, [gameState?.players]);
     
     // Countdown timer for the end-of-game screen
     useEffect(() => {
