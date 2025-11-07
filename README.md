@@ -135,7 +135,9 @@ Este projeto não usa um empacotador como Vite ou Create React App, então não 
 
 ## 🚀 Implantação com Cloudflare Pages
 
-Você pode implantar este projeto gratuitamente na internet usando o Cloudflare Pages. O processo é simples, pois este é um projeto estático que não requer um processo de compilação (build).
+Você pode implantar este projeto gratuitamente na internet usando o Cloudflare Pages. O processo é simples. Este projeto usa o Babel Standalone para transpilar o código TypeScript (TSX) diretamente no navegador, o que significa que **não é necessário um passo de compilação (build)** antes da implantação.
+
+**Nota:** O uso de transpilação no navegador é ótimo para prototipagem e projetos pequenos, mas pode não ser ideal para aplicações de produção em larga escala devido ao impacto na performance do carregamento inicial.
 
 ### Pré-requisitos
 - Uma conta no [Cloudflare](https://dash.cloudflare.com/sign-up).
