@@ -231,137 +231,109 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
         }
     }, [gameState?.status, gameState?.endGameDelayDuration, gameState?.host, user.uid, onBackToLobby, autoResetGame]);
     
-    // Game loop logic - only runs for the host
+    // Game loop logic - only runs for the host. This combines number drawing and winner checking into one transaction.
     useEffect(() => {
-        if (!gameState || gameState.host !== user.uid || gameState.status === 'paused') return;
-
-        let intervalId: number | undefined;
-        let timeoutId: number | undefined;
-
-        if (gameState.status === 'running') {
-            intervalId = window.setInterval(async () => {
-                 await db.runTransaction(async (t) => {
-                    const gameDoc = await t.get(gameDocRef);
-                    if (!gameDoc.exists) return;
-                    const data = gameDoc.data() as GameState;
-                    if (data.status !== 'running') return;
-                    
-                    const currentCountdown = data.countdown;
-                    if (currentCountdown <= 1) {
-                        const drawn = data.drawnNumbers;
-                        if (drawn.length >= 60) {
-                             t.update(gameDocRef, { status: 'ended' });
-                             return;
-                        }
-                        let newNumber;
-                        do {
-                            newNumber = Math.floor(Math.random() * 60) + 1;
-                        } while(drawn.includes(newNumber));
-                        t.update(gameDocRef, { drawnNumbers: [...drawn, newNumber], countdown: data.drawIntervalDuration || 5 });
-                    } else {
-                        t.update(gameDocRef, { countdown: currentCountdown - 1 });
-                    }
-                });
-            }, 1000);
-        } else if (gameState.status === 'ended') {
-             timeoutId = window.setTimeout(async () => {
-                // Game reset logic now handled by admin panel
-            }, (gameState.endGameDelayDuration || 10) * 1000); 
-        }
-        
-        return () => {
-            clearInterval(intervalId);
-            clearTimeout(timeoutId);
-        };
-
-    }, [gameState, user.uid, gameDocRef]);
-    
-    const isCheckingWinnerRef = useRef(false);
-    useEffect(() => {
-        if (user.uid !== gameState?.host || gameState.status !== 'running' || isCheckingWinnerRef.current) {
+        if (!gameState || gameState.host !== user.uid || gameState.status !== 'running') {
             return;
         }
-
-        const checkWinnerAndProgress = async () => {
-            isCheckingWinnerRef.current = true;
+    
+        const intervalId = window.setInterval(async () => {
             try {
                 await db.runTransaction(async (transaction) => {
                     const gameDoc = await transaction.get(gameDocRef);
-                    if (!gameDoc.exists) {
-                        throw new Error("O documento do jogo não existe.");
-                    }
-
-                    const currentGameState = gameDoc.data() as GameState;
-                    if (currentGameState.status !== 'running') {
-                        return; // O jogo terminou ou foi pausado, pare.
-                    }
-
-                    const drawnNumbers = currentGameState.drawnNumbers;
-                    if (drawnNumbers.length < 24) {
-                        return; // Ainda não é possível ter um vencedor.
-                    }
-
-                    const playerIds = Object.keys(currentGameState.players);
-                    if (playerIds.length === 0) {
+                    if (!gameDoc.exists) return;
+    
+                    const data = gameDoc.data() as GameState;
+                    if (data.status !== 'running') return;
+    
+                    const currentCountdown = data.countdown;
+    
+                    if (currentCountdown > 1) {
+                        // Just decrement countdown, no need for complex logic
+                        transaction.update(gameDocRef, { countdown: currentCountdown - 1 });
                         return;
                     }
-
-                    const currentWinners: { uid: string, displayName: string, card: number[] }[] = [];
+    
+                    // Time to draw a number and check for winners
+                    const drawn = data.drawnNumbers;
+                    if (drawn.length >= 60) {
+                        transaction.update(gameDocRef, { status: 'ended' });
+                        return;
+                    }
+    
+                    let newNumber;
+                    do {
+                        newNumber = Math.floor(Math.random() * 60) + 1;
+                    } while (drawn.includes(newNumber));
+    
+                    const updatedDrawnNumbers = [...drawn, newNumber];
+    
+                    // --- Integrated Winner Check Logic ---
+                    const playerIds = Object.keys(data.players);
+                    const currentWinners: { uid: string; displayName: string; card: number[] }[] = [];
                     const playerProgressUpdates: { [key: string]: any } = {};
-                    
-                    for (const uid of playerIds) {
-                        const playerData = currentGameState.players[uid];
-                        if (!playerData) continue;
-
-                        const playerCardsRef = db.collection('player_cards').doc(uid).collection('cards').doc('active_game');
-                        const playerCardsDoc = await transaction.get(playerCardsRef);
-
-                        if (!playerCardsDoc.exists) continue;
-
-                        const cards = playerCardsDoc.data()!.cards as BingoCardData[];
-                        let minNumbersToWin = 24;
-
-                        for (const cardData of cards) {
-                            const progress = calculateCardProgress(cardData.numbers, drawnNumbers);
-                            minNumbersToWin = Math.min(minNumbersToWin, progress.numbersToWin);
-
-                            if (progress.isBingo) {
-                                if (!currentWinners.some(w => w.uid === uid)) {
-                                    currentWinners.push({ uid, displayName: playerData.displayName, card: cardData.numbers });
+    
+                    if (updatedDrawnNumbers.length >= 24) {
+                        for (const uid of playerIds) {
+                            const playerData = data.players[uid];
+                            if (!playerData) continue;
+    
+                            const playerCardsRef = db.collection('player_cards').doc(uid).collection('cards').doc('active_game');
+                            const playerCardsDoc = await transaction.get(playerCardsRef);
+    
+                            if (!playerCardsDoc.exists) continue;
+    
+                            const cards = playerCardsDoc.data()!.cards as BingoCardData[];
+                            let minNumbersToWin = 24;
+    
+                            for (const cardData of cards) {
+                                const progress = calculateCardProgress(cardData.numbers, updatedDrawnNumbers);
+                                minNumbersToWin = Math.min(minNumbersToWin, progress.numbersToWin);
+    
+                                if (progress.isBingo) {
+                                    if (!currentWinners.some(w => w.uid === uid)) {
+                                        currentWinners.push({ uid, displayName: playerData.displayName, card: cardData.numbers });
+                                    }
                                 }
                             }
+                            playerProgressUpdates[`players.${uid}.progress`] = minNumbersToWin;
                         }
-                        playerProgressUpdates[`players.${uid}.progress`] = minNumbersToWin;
                     }
-
+    
                     if (currentWinners.length > 0) {
-                        const prizePerWinner = Math.floor(currentGameState.prizePool / currentWinners.length);
-                        
+                        // We have a winner! End the game.
+                        const prizePerWinner = data.prizePool > 0 ? Math.floor(data.prizePool / currentWinners.length) : 0;
+    
                         transaction.update(gameDocRef, {
                             status: 'ended',
                             winners: currentWinners,
-                            ...playerProgressUpdates
+                            drawnNumbers: updatedDrawnNumbers,
+                            ...playerProgressUpdates,
                         });
-
+    
                         for (const winner of currentWinners) {
-                            const userDocRef = db.collection("users").doc(winner.uid);
+                            const userDocRef = db.collection('users').doc(winner.uid);
                             transaction.update(userDocRef, { fichas: increment(prizePerWinner) });
                         }
                     } else {
-                        transaction.update(gameDocRef, playerProgressUpdates);
+                        // No winner yet, continue the game.
+                        transaction.update(gameDocRef, {
+                            drawnNumbers: updatedDrawnNumbers,
+                            countdown: data.drawIntervalDuration || 5,
+                            ...playerProgressUpdates,
+                        });
                     }
                 });
-            } catch (err) {
-                console.error("Erro na transação de verificação do vencedor:", err);
-            } finally {
-                isCheckingWinnerRef.current = false;
+            } catch (error) {
+                console.error("Erro na transação principal do jogo:", error);
             }
+        }, 1000);
+    
+        return () => {
+            clearInterval(intervalId);
         };
-
-        const timeoutId = setTimeout(checkWinnerAndProgress, 500);
-        return () => clearTimeout(timeoutId);
-
-    }, [gameState?.drawnNumbers, gameState?.host, gameState?.status, user.uid, gameDocRef]);
+    }, [gameState, user.uid, gameDocRef]);
+    
 
     const sortedPlayers = useMemo(() => {
         if (!gameState || !gameState.players) return [];
