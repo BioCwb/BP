@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import firebase from 'firebase/compat/app';
 import { type UserData } from '../App';
-import { db, increment } from '../firebase/config';
+import { db, increment, serverTimestamp } from '../firebase/config';
 // FIX: Removed unused v9 firestore imports to align with the v8 compatibility syntax.
 import { BingoCard } from './BingoCard';
 import { calculateCardProgress } from '../utils/bingoUtils';
@@ -160,6 +160,55 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
         };
     }, [gameState?.players]);
     
+    // Auto-resets the game after the end-game countdown finishes. Only run by the host.
+    const autoResetGame = useCallback(async () => {
+        if (!gameState) return;
+
+        try {
+            const announcement = gameState.winners.length ? `Último(s) vencedor(es): ${gameState.winners.map(w => w.displayName).join(', ')}` : "Jogo resetado automaticamente.";
+            const batch = db.batch();
+
+            // 1. Save game to history
+            const historyRef = db.collection('game_history').doc();
+            batch.set(historyRef, {
+                winners: gameState.winners,
+                drawnNumbers: gameState.drawnNumbers,
+                prizePool: gameState.prizePool,
+                completedAt: serverTimestamp()
+            });
+            
+            // 2. Delete all active cards from participating players
+            const playerIds = Object.keys(gameState.players || {});
+            for (const uid of playerIds) {
+                const playerCardsRef = db.collection('player_cards').doc(uid).collection('cards').doc('active_game');
+                batch.delete(playerCardsRef);
+            }
+
+            // 3. Reset the main game state document
+            batch.update(gameDocRef, { 
+                status: 'waiting', 
+                drawnNumbers: [], 
+                prizePool: 0, 
+                winners: [], 
+                countdown: gameState.lobbyCountdownDuration || 15,
+                lastWinnerAnnouncement: announcement,
+                players: {},
+                pauseReason: ''
+            });
+
+            // 4. Clear the purchase history
+            const purchaseHistoryCollectionRef = db.collection('purchase_history');
+            const purchaseHistorySnapshot = await purchaseHistoryCollectionRef.get();
+            purchaseHistorySnapshot.forEach(doc => {
+                batch.delete(doc.ref);
+            });
+            
+            await batch.commit();
+        } catch (error) {
+            console.error("Error during game auto-reset:", error);
+        }
+    }, [gameState, gameDocRef]);
+    
     // Countdown timer for the end-of-game screen
     useEffect(() => {
         if (gameState?.status === 'ended') {
@@ -169,6 +218,9 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                 setEndGameCountdown(prev => {
                     if (prev <= 1) {
                         clearInterval(timer);
+                        if (user.uid === gameState.host) {
+                            autoResetGame();
+                        }
                         onBackToLobby();
                         return 0;
                     }
@@ -177,7 +229,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
             }, 1000);
             return () => clearInterval(timer);
         }
-    }, [gameState?.status, gameState?.endGameDelayDuration, onBackToLobby]);
+    }, [gameState?.status, gameState?.endGameDelayDuration, gameState?.host, user.uid, onBackToLobby, autoResetGame]);
     
     // Game loop logic - only runs for the host
     useEffect(() => {
