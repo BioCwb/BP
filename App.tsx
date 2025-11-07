@@ -257,8 +257,8 @@ export default function App() {
 
   
   const renderVerificationView = () => (
-      <div className="w-full max-w-md bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl p-8 text-center">
-        <h2 className="text-3xl font-bold text-white mb-4">Verifique seu E-mail</h2>
+      <div className="w-full max-w-md bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl p-6 sm:p-8 text-center">
+        <h2 className="text-2xl sm:text-3xl font-bold text-white mb-4">Verifique seu E-mail</h2>
         <p className="text-gray-300 mb-6">Por favor, verifique sua caixa de entrada em <strong className="text-white">{needsVerification?.email}</strong> e clique no link de verificação.</p>
         <div className="space-y-4">
             <button onClick={handleResendVerification} disabled={resendStatus === 'sent'} className="w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-semibold transition-all duration-300 disabled:bg-gray-600 disabled:cursor-not-allowed">
@@ -273,8 +273,8 @@ export default function App() {
   );
   
   const renderPostRegistrationView = () => (
-      <div className="w-full max-w-md bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl p-8 text-center">
-        <h2 className="text-3xl font-bold text-white mb-4">Registro bem-sucedido!</h2>
+      <div className="w-full max-w-md bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl p-6 sm:p-8 text-center">
+        <h2 className="text-2xl sm:text-3xl font-bold text-white mb-4">Registro bem-sucedido!</h2>
         <p className="text-gray-300 mb-6">Um link de verificação foi enviado para o seu e-mail. Por favor, verifique sua caixa de entrada.</p>
         <button onClick={() => setShowVerificationMessage(false)} className="w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-semibold">
             Entendi, ir para o Login
@@ -288,7 +288,7 @@ export default function App() {
               <TabButton mode="login" currentMode={authMode} onClick={handleTabChange}>Entrar</TabButton>
               <TabButton mode="register" currentMode={authMode} onClick={handleTabChange}>Registrar</TabButton>
             </div>
-            <div className="p-8">
+            <div className="p-6 sm:p-8">
               {authMode === 'login' ? (
                 <>
                   <AuthForm title="Bem-vindo de volta!" onSubmit={handleLoginSubmit} buttonText="Entrar">
@@ -345,13 +345,13 @@ export default function App() {
     }
   }
 
-  const appContainerClasses = `min-h-screen w-full bg-gradient-to-br from-gray-900 via-purple-900 to-blue-900 text-white flex flex-col items-center ${viewMode === 'game' || viewMode === 'spectator' ? '' : 'justify-center p-4'}`;
+  const appContainerClasses = `min-h-screen w-full bg-gradient-to-br from-gray-900 via-purple-900 to-blue-900 text-white flex flex-col items-center ${viewMode === 'game' || viewMode === 'spectator' ? '' : 'justify-center p-2 sm:p-4'}`;
 
   return (
     <div className={appContainerClasses}>
         {viewMode === 'auth' && !showVerificationMessage && !needsVerification && (
-            <div className="text-center mb-8">
-                <h1 className="text-5xl font-bold tracking-tight text-white sm:text-6xl">NOITE DO BINGO</h1>
+            <div className="text-center mb-6 sm:mb-8">
+                <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white">NOITE DO BINGO</h1>
                 <p className="mt-4 text-lg text-gray-300">Sua vez de ganhar!</p>
             </div>
         )}
