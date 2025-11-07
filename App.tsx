@@ -328,7 +328,10 @@ export default function App() {
                     <InputField id="login-email" label="E-mail" type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="Digite seu e-mail" icon={<EmailIcon />} />
                     <InputField id="login-password" label="Senha" type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="Digite sua senha" icon={<LockIcon />} />
                   </AuthForm>
-                  <div className="relative flex py-5 items-center">
+                   <div className="mt-4 text-center text-sm text-gray-400">
+                    Versão: 1.0.0
+                  </div>
+                  <div className="relative flex py-4 items-center">
                     <div className="flex-grow border-t border-gray-600"></div>
                     <span className="flex-shrink mx-4 text-gray-400 text-sm">Ou</span>
                     <div className="flex-grow border-t border-gray-600"></div>
@@ -390,9 +393,6 @@ export default function App() {
             </div>
         )}
         {renderContent()}
-        <footer className="fixed bottom-0 right-0 p-2 text-xs text-gray-500">
-            Versão: 1.0.0
-        </footer>
     </div>
   );
 }
