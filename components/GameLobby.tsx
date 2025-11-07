@@ -209,7 +209,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
             if (userDoc.data()!.fichas < 10) {
                 throw new Error('Fichas (F) insuficientes para comprar uma cartela.');
             }
-            const currentCards = playerCardsDoc.exists() ? playerCardsDoc.data()!.cards || [] : [];
+            const currentCards = playerCardsDoc.exists ? playerCardsDoc.data()!.cards || [] : [];
             if (currentCards.length >= 10) {
                 throw new Error('Você não pode ter mais de 10 cartelas.');
             }

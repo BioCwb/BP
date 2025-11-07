@@ -150,7 +150,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             try {
                 const docRef = db.collection('player_cards').doc(uid).collection('cards').doc('active_game');
                 const doc = await docRef.get();
-                setPlayerCardDetails(prev => ({ ...prev, [uid]: doc.exists() ? (doc.data()?.cards as BingoCardData[] || []) : [] }));
+                setPlayerCardDetails(prev => ({ ...prev, [uid]: doc.exists ? (doc.data()?.cards as BingoCardData[] || []) : [] }));
             } catch (error) {
                 console.error("Error fetching player cards:", error);
                 showMessage('error', 'Falha ao carregar cartelas do jogador.');
