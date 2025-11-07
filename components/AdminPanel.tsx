@@ -561,29 +561,29 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                             {!isLoadingCards && playerCardDetails[uid] && playerCardDetails[uid].length > 0 ? (() => {
                                                 const drawnNumbersSet = new Set(gameState?.drawnNumbers || []);
                                                 return (
-                                                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                                                    <div className="space-y-3 max-h-56 overflow-y-auto">
                                                         {playerCardDetails[uid].map((card, index) => (
-                                                            <div key={card.id} className="bg-gray-900 p-2 rounded">
-                                                                <p className="text-xs font-mono text-purple-300">Cartela #{index + 1} (ID: {card.id.substring(0,8)})</p>
-                                                                <div className="grid grid-cols-5 gap-1 text-center text-xs font-mono mt-1">
+                                                            <div key={card.id} className="bg-gray-900 p-3 rounded-lg">
+                                                                <p className="text-sm font-semibold text-purple-300">Cartela #{index + 1} <span className="text-xs text-gray-400 font-mono">(ID: {card.id.substring(0,8)})</span></p>
+                                                                <div className="grid grid-cols-5 gap-2 text-center text-sm mt-2">
                                                                     {card.numbers.map((num, idx) => {
                                                                         const isDrawn = drawnNumbersSet.has(num);
                                                                         const isCenter = num === 0;
                                                                         
-                                                                        let cellClasses = 'p-1 rounded aspect-square flex items-center justify-center';
+                                                                        let cellClasses = 'p-1 rounded aspect-square flex items-center justify-center font-bold';
 
                                                                         if (isCenter) {
-                                                                            cellClasses += ' bg-yellow-500 text-black font-bold';
+                                                                            cellClasses += ' bg-yellow-500 text-black';
                                                                         } else if (isDrawn) {
-                                                                            cellClasses += ' bg-green-500 text-white font-bold';
+                                                                            cellClasses += ' bg-green-500 text-white';
                                                                         } else {
                                                                             cellClasses += ' bg-gray-600 text-gray-300';
                                                                         }
                                                                         
                                                                         return (
-                                                                            <span key={idx} className={cellClasses}>
+                                                                            <div key={idx} className={cellClasses}>
                                                                                 {isCenter ? '★' : num}
-                                                                            </span>
+                                                                            </div>
                                                                         );
                                                                     })}
                                                                 </div>
