@@ -30,6 +30,7 @@ Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real cons
 - **Gerenciamento de Jogadores:**
     - **Remover Cartela de Jogador:** Remova a última cartela de um jogador com uma justificação obrigatória. O jogador é reembolsado, e a ação fica registrada.
 - **Histórico de Vendas:** Monitore um log em tempo real de todas as cartelas compradas na rodada, incluindo quem comprou, o ID da cartela e quando.
+- **Busca de Histórico e Chat:** Filtre rapidamente o histórico de vendas e as mensagens do chat por nome de jogador ou conteúdo da mensagem.
 - **Configurações de Tempo:** Ajuste a duração dos contadores de tempo do lobby, sorteio e tela de vencedores.
 
 ---
@@ -51,7 +52,7 @@ O objetivo é ser o primeiro jogador a completar uma cartela inteira (todos os 2
 ### Como Jogar
 1.  **Crie uma Conta e Faça Login:** Use seu e-mail ou conta Google para acessar o jogo. Novos jogadores recebem um bônus de 100 Fichas (F).
 2.  **Acesse o Lobby:** Após o login, você estará no lobby. Aqui você pode conversar com outros jogadores e ver seu saldo de fichas.
-3.  **Compre Suas Cartelas:** Antes de a partida começar, clique no botão "Comprar Cartela (10 F)". Cada cartela custa 10 Fichas. Você pode comprar até 10 cartelas por rodada.
+3.  **Compre Suas Cartelas:** Antes de a partida começar, clique no botão "Comprar Cartela (10 F)". Cada cartela custa 10 Fichas. Você pode comprar até 10 cartelas por rodada. As cartelas são válidas para uma única partida; você precisará comprar novas cartelas para cada nova rodada.
 4.  **Aguarde o Início:** O jogo não começa automaticamente. O administrador iniciará a partida manualmente. A exigência mínima é de **2 jogadores e 2 cartelas vendidas**.
 5.  **Acompanhe e Marque:** Os números sorteados recebem um destaque especial na borda. Para uma experiência mais interativa, você pode clicar nesses números para marcá-los com uma animação, ajudando a visualizar seu progresso!
 6.  **Vitória Automática:** O primeiro jogador a ter todos os 24 números de uma cartela sorteados vence o jogo. O sistema detecta a vitória instantaneamente e encerra a partida, então não é preciso se preocupar em clicar em "BINGO!", apenas torça e acompanhe suas cartelas!

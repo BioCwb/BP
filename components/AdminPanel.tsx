@@ -41,6 +41,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [isLoadingCards, setIsLoadingCards] = useState(false);
     const [purchaseHistory, setPurchaseHistory] = useState<PurchaseHistoryItem[]>([]);
     const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+    const [purchaseHistorySearch, setPurchaseHistorySearch] = useState('');
+    const [chatSearch, setChatSearch] = useState('');
 
     const gameDocRef = useMemo(() => db.collection('games').doc('active_game'), []);
     const purchaseHistoryCollectionRef = useMemo(() => db.collection('purchase_history'), []);
@@ -95,6 +97,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
 
         return () => clearInterval(intervalId);
     }, []);
+
+    const filteredPurchaseHistory = useMemo(() => {
+        if (!purchaseHistorySearch) return purchaseHistory;
+        const lowercasedQuery = purchaseHistorySearch.toLowerCase();
+        return purchaseHistory.filter(item =>
+            item.playerName.toLowerCase().includes(lowercasedQuery)
+        );
+    }, [purchaseHistory, purchaseHistorySearch]);
+
+    const filteredChatMessages = useMemo(() => {
+        if (!chatSearch) return chatMessages;
+        const lowercasedQuery = chatSearch.toLowerCase();
+        return chatMessages.filter(msg =>
+            msg.displayName.toLowerCase().includes(lowercasedQuery) ||
+            msg.text.toLowerCase().includes(lowercasedQuery)
+        );
+    }, [chatMessages, chatSearch]);
     
     const showMessage = (type: 'success' | 'error', text: string) => {
         setMessage({ type, text });
@@ -266,6 +285,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                 const announcement = gameState.winners.length ? `Último(s) vencedor(es): ${gameState.winners.map(w => w.displayName).join(', ')}` : "Jogo resetado pelo administrador.";
                 const batch = db.batch();
 
+                // 1. Save game to history if it has ended
                 if (gameState.status === 'ended') {
                     const historyRef = db.collection('game_history').doc();
                     batch.set(historyRef, {
@@ -276,6 +296,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                     });
                 }
                 
+                // 2. Delete all active cards from participating players
+                const playerIds = Object.keys(gameState.players || {});
+                if (playerIds.length > 0) {
+                    for (const uid of playerIds) {
+                        const playerCardsRef = db.collection('player_cards').doc(uid).collection('cards').doc('active_game');
+                        batch.delete(playerCardsRef);
+                    }
+                }
+
+                // 3. Reset the main game state document
                 batch.update(gameDocRef, { 
                     status: 'waiting', 
                     drawnNumbers: [], 
@@ -287,6 +317,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                     pauseReason: ''
                 });
 
+                // 4. Clear the purchase history for the new round
                 const purchaseHistorySnapshot = await purchaseHistoryCollectionRef.get();
                 purchaseHistorySnapshot.forEach(doc => {
                     batch.delete(doc.ref);
@@ -527,22 +558,40 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                     {expandedPlayerId === uid && (
                                         <div className="p-2 border-t border-gray-600 bg-gray-800">
                                             {isLoadingCards && <p className="text-sm text-center text-gray-400">Carregando...</p>}
-                                            {!isLoadingCards && playerCardDetails[uid] && playerCardDetails[uid].length > 0 ? (
-                                                <div className="space-y-2 max-h-48 overflow-y-auto">
-                                                    {playerCardDetails[uid].map((card, index) => (
-                                                        <div key={card.id} className="bg-gray-900 p-2 rounded">
-                                                            <p className="text-xs font-mono text-purple-300">Cartela #{index + 1} (ID: {card.id.substring(0,8)})</p>
-                                                            <div className="grid grid-cols-5 gap-1 text-center text-sm font-mono">
-                                                                {card.numbers.map((num, idx) => (
-                                                                    <span key={idx} className={`p-1 rounded ${num === 0 ? 'text-yellow-400 font-bold' : ''}`}>
-                                                                        {num === 0 ? '★' : num}
-                                                                    </span>
-                                                                ))}
+                                            {!isLoadingCards && playerCardDetails[uid] && playerCardDetails[uid].length > 0 ? (() => {
+                                                const drawnNumbersSet = new Set(gameState?.drawnNumbers || []);
+                                                return (
+                                                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                                                        {playerCardDetails[uid].map((card, index) => (
+                                                            <div key={card.id} className="bg-gray-900 p-2 rounded">
+                                                                <p className="text-xs font-mono text-purple-300">Cartela #{index + 1} (ID: {card.id.substring(0,8)})</p>
+                                                                <div className="grid grid-cols-5 gap-1 text-center text-xs font-mono mt-1">
+                                                                    {card.numbers.map((num, idx) => {
+                                                                        const isDrawn = drawnNumbersSet.has(num);
+                                                                        const isCenter = num === 0;
+                                                                        
+                                                                        let cellClasses = 'p-1 rounded aspect-square flex items-center justify-center';
+
+                                                                        if (isCenter) {
+                                                                            cellClasses += ' bg-yellow-500 text-black font-bold';
+                                                                        } else if (isDrawn) {
+                                                                            cellClasses += ' bg-green-500 text-white font-bold';
+                                                                        } else {
+                                                                            cellClasses += ' bg-gray-600 text-gray-300';
+                                                                        }
+                                                                        
+                                                                        return (
+                                                                            <span key={idx} className={cellClasses}>
+                                                                                {isCenter ? '★' : num}
+                                                                            </span>
+                                                                        );
+                                                                    })}
+                                                                </div>
                                                             </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            ) : (
+                                                        ))}
+                                                    </div>
+                                                );
+                                            })() : (
                                                 !isLoadingCards && <p className="text-sm text-center text-gray-500">Nenhuma cartela para exibir.</p>
                                             )}
                                         </div>
@@ -557,10 +606,17 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                 {/* Coluna 3: Logs e Moderação */}
                 <div className="flex flex-col gap-6">
                     <div className="bg-gray-900 p-4 rounded-lg flex flex-col min-h-0">
-                        <h3 className="text-xl font-semibold mb-4 text-center flex-shrink-0">Histórico de Vendas</h3>
+                        <h3 className="text-xl font-semibold mb-2 text-center flex-shrink-0">Histórico de Vendas</h3>
+                        <input
+                            type="text"
+                            placeholder="Buscar por jogador..."
+                            value={purchaseHistorySearch}
+                            onChange={(e) => setPurchaseHistorySearch(e.target.value)}
+                            className="w-full p-2 mb-2 bg-gray-700 border border-gray-600 rounded-lg text-sm placeholder-gray-400"
+                        />
                         <div className="space-y-2 overflow-y-auto pr-2 flex-grow">
-                            {purchaseHistory.length > 0 ? (
-                                purchaseHistory.map(item => (
+                            {filteredPurchaseHistory.length > 0 ? (
+                                filteredPurchaseHistory.map(item => (
                                     <div key={item.id} className="bg-gray-700 p-2 rounded-md text-sm">
                                         <p className="font-semibold text-purple-300">{item.playerName}</p>
                                         <p className="text-xs text-gray-400 font-mono">ID: {item.cardId.substring(0, 12)}</p>
@@ -568,15 +624,24 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                     </div>
                                 ))
                             ) : (
-                                 <p className="text-center text-gray-400 italic">Nenhuma cartela vendida nesta rodada.</p>
+                                 <p className="text-center text-gray-400 italic">
+                                    {purchaseHistory.length === 0 ? 'Nenhuma cartela vendida.' : 'Nenhum resultado encontrado.'}
+                                 </p>
                             )}
                         </div>
                     </div>
                     <div className="bg-gray-900 p-4 rounded-lg flex flex-col min-h-0">
-                        <h3 className="text-xl font-semibold mb-4 text-center flex-shrink-0">Moderação do Chat</h3>
+                        <h3 className="text-xl font-semibold mb-2 text-center flex-shrink-0">Moderação do Chat</h3>
+                         <input
+                            type="text"
+                            placeholder="Buscar por jogador ou mensagem..."
+                            value={chatSearch}
+                            onChange={(e) => setChatSearch(e.target.value)}
+                            className="w-full p-2 mb-2 bg-gray-700 border border-gray-600 rounded-lg text-sm placeholder-gray-400"
+                        />
                         <div className="space-y-2 overflow-y-auto pr-2 flex-grow">
-                            {chatMessages.length > 0 ? (
-                                chatMessages.map(msg => (
+                            {filteredChatMessages.length > 0 ? (
+                                filteredChatMessages.map(msg => (
                                     <div key={msg.id} className="bg-gray-700 p-2 rounded-md text-sm flex items-start justify-between gap-2">
                                         <div className="flex-grow">
                                             <p className="font-semibold text-purple-300">{msg.displayName}</p>
@@ -593,7 +658,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                     </div>
                                 ))
                             ) : (
-                                <p className="text-center text-gray-400 italic">Nenhuma mensagem no chat.</p>
+                                <p className="text-center text-gray-400 italic">
+                                     {chatMessages.length === 0 ? 'Nenhuma mensagem no chat.' : 'Nenhum resultado encontrado.'}
+                                </p>
                             )}
                         </div>
                     </div>
