@@ -4,6 +4,10 @@ import { db, serverTimestamp, increment, auth, EmailAuthProvider } from '../fire
 import type { GameState } from './BingoGame';
 import { TrashIcon } from './icons/TrashIcon';
 import { EyeIcon } from './icons/EyeIcon';
+import { calculateCardProgress } from '../utils/bingoUtils';
+
+// TODO: This should ideally be managed via roles in Firestore Security Rules or a central config.
+const ADMIN_UID = 'fKlSv57pZeSGPGiQG2z4NKAD9qi2';
 
 interface AdminPanelProps {
     user: firebase.User;
@@ -160,6 +164,95 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
 
         return () => unsubscribe(); // Cleanup listener on component unmount or when players change
     }, [gameState?.players]);
+
+    // Main Game Loop - controlled by the Admin Panel
+    useEffect(() => {
+        if (user.uid !== ADMIN_UID || !gameState) return;
+
+        if (gameState.status === 'running') {
+            const drawInterval = (gameState.drawIntervalDuration || 8) * 1000;
+
+            const gameLoop = setTimeout(async () => {
+                try {
+                    await db.runTransaction(async (transaction) => {
+                        const gameDocInTransaction = await transaction.get(gameDocRef);
+                        if (!gameDocInTransaction.exists) throw new Error("O jogo não foi encontrado.");
+                        
+                        const currentGameState = gameDocInTransaction.data() as GameState;
+                        if (currentGameState.status !== 'running') return; // Stop if game state changed
+
+                        const availableNumbers = Array.from({ length: 60 }, (_, i) => i + 1)
+                            .filter(num => !currentGameState.drawnNumbers.includes(num));
+
+                        if (availableNumbers.length === 0) {
+                            transaction.update(gameDocRef, { status: 'ended', winners: [] });
+                            return;
+                        }
+
+                        const newNumber = availableNumbers[Math.floor(Math.random() * availableNumbers.length)];
+                        const updatedDrawnNumbers = [...currentGameState.drawnNumbers, newNumber];
+                        
+                        const playerIds = Object.keys(currentGameState.players || {});
+                        const winners: { uid: string, displayName: string, card: number[] }[] = [];
+                        const updatedPlayers = { ...currentGameState.players };
+
+                        for (const uid of playerIds) {
+                            const playerCardsRef = db.collection('player_cards').doc(uid).collection('cards').doc('active_game');
+                            const playerCardsDoc = await transaction.get(playerCardsRef);
+                            
+                            if (playerCardsDoc.exists) {
+                                const cards = playerCardsDoc.data()!.cards as BingoCardData[];
+                                let minProgress = 24;
+
+                                for (const card of cards) {
+                                    const { isBingo, numbersToWin } = calculateCardProgress(card.numbers, updatedDrawnNumbers);
+                                    if (numbersToWin < minProgress) minProgress = numbersToWin;
+                                    if (isBingo) {
+                                        winners.push({ uid, displayName: currentGameState.players[uid].displayName, card: card.numbers });
+                                    }
+                                }
+                                updatedPlayers[uid] = { ...updatedPlayers[uid], progress: minProgress };
+                            }
+                        }
+
+                        if (winners.length > 0) {
+                            const prizePerWinner = Math.floor(currentGameState.prizePool / winners.length);
+                            for (const winner of winners) {
+                                const userRef = db.collection('users').doc(winner.uid);
+                                transaction.update(userRef, { fichas: increment(prizePerWinner) });
+                            }
+                            transaction.update(gameDocRef, {
+                                status: 'ended',
+                                drawnNumbers: updatedDrawnNumbers,
+                                winners: winners,
+                                players: updatedPlayers
+                            });
+                        } else {
+                            transaction.update(gameDocRef, {
+                                drawnNumbers: updatedDrawnNumbers,
+                                countdown: currentGameState.drawIntervalDuration || 8,
+                                players: updatedPlayers
+                            });
+                        }
+                    });
+                } catch (error) {
+                    console.error("Erro na transação do ciclo do jogo:", error);
+                    showMessage('error', 'Erro na transação de verificação do vencedor.');
+                    await gameDocRef.update({ status: 'paused', pauseReason: 'Erro crítico no servidor.' });
+                }
+            }, drawInterval);
+
+            const countdownTimer = setInterval(() => {
+                gameDocRef.update({ countdown: increment(-1) }).catch(() => {});
+            }, 1000);
+
+            return () => {
+                clearTimeout(gameLoop);
+                clearInterval(countdownTimer);
+            };
+        }
+    }, [gameState, user.uid, gameDocRef]);
+
 
     const filteredPurchaseHistory = useMemo(() => {
         if (!purchaseHistorySearch) return purchaseHistory;
