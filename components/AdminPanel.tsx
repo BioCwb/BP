@@ -80,6 +80,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [isClearCardsModalOpen, setIsClearCardsModalOpen] = useState(false);
     const [clearCardsJustification, setClearCardsJustification] = useState('');
     const [clearCardsConfirmationText, setClearCardsConfirmationText] = useState('');
+    const [clearCardsPassword, setClearCardsPassword] = useState('');
     const [clearCardsError, setClearCardsError] = useState<string | null>(null);
     const [isClearingCards, setIsClearingCards] = useState(false);
 
@@ -190,9 +191,40 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
         return () => unsubscribe(); // Cleanup listener on component unmount or when players change
     }, [gameState?.players]);
 
+    // Countdown for lobby before game starts
+    useEffect(() => {
+        if (user.uid !== ADMIN_UID || !gameState || gameState.status !== 'starting') return;
+
+        // Ensure only the designated host runs the countdown.
+        if (gameState.host !== user.uid) {
+            return;
+        }
+
+        if (gameState.countdown > 0) {
+            const timer = setTimeout(() => {
+                gameDocRef.update({ countdown: increment(-1) }).catch(() => {});
+            }, 1000);
+            return () => clearTimeout(timer);
+        } else {
+            // Countdown finished, start the game
+            gameDocRef.update({
+                status: 'running',
+                countdown: gameState.drawIntervalDuration,
+            }).catch(err => {
+                console.error("Failed to transition to running state:", err);
+                showMessage('error', 'Falha ao iniciar o jogo após contagem.');
+            });
+        }
+    }, [gameState, user.uid, gameDocRef]);
+
     // Main Game Loop - controlled by the Admin Panel
     useEffect(() => {
         if (user.uid !== ADMIN_UID || !gameState) return;
+
+        // Ensure only the designated host runs the game loop.
+        if (gameState.host !== user.uid) {
+            return;
+        }
 
         if (gameState.status === 'running') {
             const drawInterval = (gameState.drawIntervalDuration || 8) * 1000;
@@ -558,9 +590,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     
         try {
             await gameDocRef.update({
-                status: 'running',
+                status: 'starting',
                 host: adminUser.uid,
-                countdown: gameState.drawIntervalDuration,
+                countdown: gameState.lobbyCountdownDuration,
             });
     
             const justification = (playerCount < 2 || prizePool === 0) 
@@ -579,10 +611,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                 timestamp: serverTimestamp(),
             });
     
-            showMessage('success', 'Jogo iniciado com força!');
+            showMessage('success', 'Contagem regressiva do jogo iniciada!');
         } catch (error) {
             console.error("Error forcing game start:", error);
-            showMessage('error', 'Falha ao forçar o início do jogo.');
+            showMessage('error', 'Falha ao iniciar contagem regressiva.');
         }
     };
 
@@ -653,6 +685,28 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             setClearCardsError('Administrador ou estado do jogo não encontrado.');
             return;
         }
+
+        const isEmailProvider = adminUser.providerData.some(p => p.providerId === 'password');
+
+        // Re-authentication step for email/password admins
+        if (isEmailProvider) {
+            if (!clearCardsPassword) {
+                setClearCardsError('Por favor, insira sua senha para confirmar.');
+                return;
+            }
+            try {
+                // Ensure email is available before creating credential
+                if (!adminUser.email) {
+                    throw new Error("E-mail do administrador não encontrado para reautenticação.");
+                }
+                const credential = EmailAuthProvider.credential(adminUser.email, clearCardsPassword);
+                await adminUser.reauthenticateWithCredential(credential);
+            } catch (error) {
+                console.error("Re-authentication failed:", error);
+                setClearCardsError('Senha incorreta. Ação cancelada.');
+                return;
+            }
+        }
         
         setIsClearingCards(true);
 
@@ -661,7 +715,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             const playerIds = Object.keys(gameState.players || {});
             
             if (playerIds.length === 0) {
-                throw new Error("Nenhum jogador com cartelas para limpar.");
+                // This is not an error, just means there's nothing to do.
+                showMessage('success', 'Nenhum jogador tinha cartelas para limpar.');
+                setIsClearCardsModalOpen(false);
+                setClearCardsJustification('');
+                setClearCardsConfirmationText('');
+                setClearCardsPassword('');
+                setIsClearingCards(false);
+                return;
             }
 
             for (const uid of playerIds) {
@@ -704,6 +765,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             setIsClearCardsModalOpen(false);
             setClearCardsJustification('');
             setClearCardsConfirmationText('');
+            setClearCardsPassword('');
 
         } catch (error: any) {
             console.error("Error clearing all cards:", error);
@@ -744,6 +806,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             await gameDocRef.update({
                 status: 'running',
                 pauseReason: '',
+                host: adminUser.uid,
             });
             await db.collection('admin_logs').add({
                 adminUid: adminUser.uid,
@@ -785,6 +848,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             <p className="text-3xl font-bold">{value}</p>
         </div>
     );
+
+    const isEmailProvider = user.providerData.some(p => p.providerId === 'password');
     
     return (
         <div className="bg-gray-900 text-white w-full max-w-7xl mx-auto p-4 rounded-lg shadow-2xl">
@@ -865,6 +930,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                     placeholder="Ex: Fim do evento, reset da rodada."
                                 />
                             </div>
+                            {isEmailProvider && (
+                                <div className="mb-4">
+                                    <label htmlFor="clear-password" className="block text-sm font-medium text-gray-300 mb-1">Sua Senha de Admin (Obrigatória)</label>
+                                    <input
+                                        id="clear-password"
+                                        type="password"
+                                        value={clearCardsPassword}
+                                        onChange={(e) => setClearCardsPassword(e.target.value)}
+                                        className="w-full py-2 px-3 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-red-500"
+                                        placeholder="Confirme sua identidade"
+                                    />
+                                </div>
+                            )}
                             <div className="mb-4 bg-gray-900 p-4 rounded-lg border border-yellow-600">
                                 <label htmlFor="clear-confirmation-text" className="block text-sm font-medium text-gray-300 mb-2 text-center">
                                     Para confirmar, digite <strong className="text-yellow-400 tracking-widest">CONFIRMAR</strong> no campo abaixo.
@@ -882,7 +960,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                 <button type="button" onClick={() => setIsClearCardsModalOpen(false)} className="py-2 px-4 bg-gray-600 hover:bg-gray-700 rounded-lg">Cancelar</button>
                                 <button 
                                     type="submit" 
-                                    disabled={isClearingCards || clearCardsConfirmationText !== 'CONFIRMAR' || !clearCardsJustification.trim()} 
+                                    disabled={isClearingCards || clearCardsConfirmationText !== 'CONFIRMAR' || !clearCardsJustification.trim() || (isEmailProvider && !clearCardsPassword)} 
                                     className="py-2 px-4 bg-red-600 hover:bg-red-700 rounded-lg disabled:bg-gray-500 disabled:cursor-not-allowed"
                                 >
                                     {isClearingCards ? 'Limpando...' : 'Confirmar e Limpar Tudo'}
@@ -920,6 +998,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                         setClearCardsJustification('');
                                         setClearCardsError(null);
                                         setClearCardsConfirmationText('');
+                                        setClearCardsPassword('');
                                         setIsClearCardsModalOpen(true);
                                     }} 
                                     disabled={gameState.status !== 'waiting' || isClearingCards} 

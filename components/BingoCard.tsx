@@ -3,7 +3,8 @@ import React, { useState, useEffect } from 'react';
 interface BingoCardProps {
     numbers: number[];
     drawnNumbers: number[];
-    gameStatus: 'waiting' | 'running' | 'ended' | 'paused';
+    // FIX: Add 'starting' to the gameStatus type to align with the GameState interface from BingoGame.tsx.
+    gameStatus: 'waiting' | 'starting' | 'running' | 'ended' | 'paused';
     isWinningCard?: boolean;
     lastDrawnNumber?: number | null;
 }
