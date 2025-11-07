@@ -70,10 +70,26 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [clearAllError, setClearAllError] = useState<string | null>(null);
     const [isClearingCards, setIsClearingCards] = useState(false);
 
+    // State for bonus configuration
+    const [welcomeBonus, setWelcomeBonus] = useState(100);
+    const [dailyBonus, setDailyBonus] = useState(10);
+    
+    // State for managing player fichas modal
+    const [isManageFichasModalOpen, setIsManageFichasModalOpen] = useState(false);
+    const [selectedPlayerForFichas, setSelectedPlayerForFichas] = useState<{ uid: string; displayName: string } | null>(null);
+    const [fichasAmount, setFichasAmount] = useState<number | string>('');
+    const [fichasAction, setFichasAction] = useState<'give' | 'remove'>('give');
+    const [fichasJustification, setFichasJustification] = useState('');
+    const [fichasError, setFichasError] = useState<string | null>(null);
+    const [isProcessingFichas, setIsProcessingFichas] = useState(false);
+
+
     const gameDocRef = useMemo(() => db.collection('games').doc('active_game'), []);
     const purchaseHistoryCollectionRef = useMemo(() => db.collection('purchase_history'), []);
     const chatCollectionRef = useMemo(() => db.collection('chat'), []);
     const adminLogsCollectionRef = useMemo(() => db.collection('admin_logs'), []);
+    const bonusConfigRef = useMemo(() => db.collection('game_config').doc('bonuses'), []);
+
 
     useEffect(() => {
         const unsubscribe = gameDocRef.onSnapshot((doc) => {
@@ -102,14 +118,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AdminLogItem));
             setAdminLogs(logs);
         });
+        
+        const unsubBonusConfig = bonusConfigRef.onSnapshot(doc => {
+            if (doc.exists) {
+                const data = doc.data();
+                setWelcomeBonus(data?.welcomeBonus || 100);
+                setDailyBonus(data?.dailyBonus || 10);
+            }
+        });
 
         return () => { 
             unsubscribe();
             unsubHistory();
             unsubChat();
             unsubLogs();
+            unsubBonusConfig();
         };
-    }, [gameDocRef, purchaseHistoryCollectionRef, chatCollectionRef, adminLogsCollectionRef]);
+    }, [gameDocRef, purchaseHistoryCollectionRef, chatCollectionRef, adminLogsCollectionRef, bonusConfigRef]);
 
     useEffect(() => {
         const statusCollectionRef = db.collection('player_status');
@@ -426,6 +451,91 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             showMessage('error', 'Falha ao salvar configurações.');
         }
     };
+    
+    const handleSaveBonuses = async () => {
+        try {
+            const bonusData = {
+                welcomeBonus: Number(welcomeBonus),
+                dailyBonus: Number(dailyBonus),
+            };
+            await bonusConfigRef.set(bonusData, { merge: true });
+
+            await db.collection('admin_logs').add({
+                adminUid: user.uid,
+                adminName: user.displayName,
+                action: 'save_bonus_settings',
+                details: bonusData,
+                timestamp: serverTimestamp(),
+            });
+
+            showMessage('success', 'Configurações de bônus salvas com sucesso!');
+        } catch (error) {
+            console.error("Failed to save bonus settings:", error);
+            showMessage('error', 'Falha ao salvar configurações de bônus.');
+        }
+    };
+    
+    const openManageFichasModal = (uid: string, displayName: string) => {
+        setSelectedPlayerForFichas({ uid, displayName });
+        setFichasAmount('');
+        setFichasAction('give');
+        setFichasJustification('');
+        setFichasError(null);
+        setIsManageFichasModalOpen(true);
+    };
+
+    const handleManageFichasSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setFichasError(null);
+        setIsProcessingFichas(true);
+
+        const amount = Number(fichasAmount);
+
+        if (!selectedPlayerForFichas || !Number.isInteger(amount) || amount <= 0) {
+            setFichasError('Por favor, insira um valor inteiro e positivo.');
+            setIsProcessingFichas(false);
+            return;
+        }
+        if (fichasAction === 'remove' && (!fichasJustification || fichasJustification.trim() === '')) {
+            setFichasError('A justificação é obrigatória para remover fichas.');
+            setIsProcessingFichas(false);
+            return;
+        }
+
+        try {
+            const playerRef = db.collection('users').doc(selectedPlayerForFichas.uid);
+            const logRef = db.collection('admin_logs').doc();
+            
+            const batch = db.batch();
+            
+            batch.update(playerRef, {
+                fichas: increment(fichasAction === 'give' ? amount : -amount),
+            });
+            
+            batch.set(logRef, {
+                adminUid: user.uid,
+                adminName: user.displayName,
+                action: fichasAction === 'give' ? 'give_fichas' : 'remove_fichas',
+                targetUid: selectedPlayerForFichas.uid,
+                targetName: selectedPlayerForFichas.displayName,
+                details: { amount: amount },
+                justification: fichasAction === 'remove' ? fichasJustification : null,
+                timestamp: serverTimestamp(),
+            });
+
+            await batch.commit();
+
+            showMessage('success', `Fichas ${fichasAction === 'give' ? 'dadas' : 'removidas'} com sucesso!`);
+            setIsManageFichasModalOpen(false);
+
+        } catch (error) {
+            console.error('Error managing fichas:', error);
+            setFichasError('Ocorreu um erro. Verifique o console.');
+        } finally {
+            setIsProcessingFichas(false);
+        }
+    };
+
 
     const { totalPlayers, totalCards } = useMemo(() => {
         if (!gameState?.players) {
@@ -753,6 +863,20 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                         </div>
                         <button onClick={handleSaveSettings} className="mt-6 w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold">Salvar Configurações</button>
                     </div>
+                    <div className="bg-gray-900 p-4 rounded-lg">
+                        <h3 className="text-xl font-semibold mb-4 text-center">Configurações de Bônus (Fichas)</h3>
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <label htmlFor="welcome-bonus">Bônus de Boas-Vindas:</label>
+                                <input id="welcome-bonus" type="number" value={welcomeBonus} onChange={e => setWelcomeBonus(Number(e.target.value))} className="w-24 p-2 bg-gray-700 border border-gray-600 rounded-lg text-center" />
+                            </div>
+                             <div className="flex items-center justify-between">
+                                <label htmlFor="daily-bonus">Bônus Diário:</label>
+                                <input id="daily-bonus" type="number" value={dailyBonus} onChange={e => setDailyBonus(Number(e.target.value))} className="w-24 p-2 bg-gray-700 border border-gray-600 rounded-lg text-center" />
+                            </div>
+                        </div>
+                        <button onClick={handleSaveBonuses} className="mt-6 w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold">Salvar Bônus</button>
+                    </div>
                 </div>
                 {/* Coluna 2: Gerenciamento de Jogadores */}
                 <div className="bg-gray-900 p-4 rounded-lg">
@@ -761,12 +885,18 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                         {gameState && Object.keys(gameState.players).length > 0 ? (
                             (Object.entries(gameState.players) as [string, { displayName: string; cardCount: number; }][]).map(([uid, player]) => (
                                 <div key={uid} className="bg-gray-700 rounded-md transition-all duration-300">
-                                    <div className="flex items-center justify-between p-2 cursor-pointer hover:bg-gray-600" onClick={() => handleTogglePlayer(uid)}>
-                                        <div>
+                                    <div className="flex items-center justify-between p-2">
+                                        <div className="cursor-pointer flex-1" onClick={() => handleTogglePlayer(uid)}>
                                             <p className="font-semibold">{player.displayName}</p>
                                             <p className="text-sm text-gray-400">{player.cardCount} cartela(s)</p>
                                         </div>
                                         <div className="flex items-center gap-2">
+                                             <button
+                                                onClick={() => openManageFichasModal(uid, player.displayName)}
+                                                className="py-1 px-3 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-semibold"
+                                            >
+                                                Fichas
+                                            </button>
                                             <button
                                                 onClick={(e) => { e.stopPropagation(); handleRemoveCard(uid); }}
                                                 disabled={!player.cardCount || player.cardCount === 0 || gameState.status !== 'waiting'}
@@ -774,7 +904,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                             >
                                                 Remover
                                             </button>
-                                            <span className={`transform transition-transform text-gray-400 ${expandedPlayerId === uid ? 'rotate-180' : 'rotate-0'}`}>▼</span>
+                                            <span onClick={() => handleTogglePlayer(uid)} className={`cursor-pointer transform transition-transform text-gray-400 ${expandedPlayerId === uid ? 'rotate-180' : 'rotate-0'}`}>▼</span>
                                         </div>
                                     </div>
                                     {expandedPlayerId === uid && (
@@ -1022,6 +1152,77 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                             Limpando...
                                         </>
                                     ) : 'Confirmar e Limpar'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+             {isManageFichasModalOpen && selectedPlayerForFichas && (
+                <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+                    <div className="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-lg text-white border border-blue-500">
+                        <form onSubmit={handleManageFichasSubmit}>
+                            <h3 className="text-2xl font-bold text-blue-400 mb-2">Gerenciar Fichas</h3>
+                            <p className="text-gray-300 mb-4">
+                                Modificando saldo de <strong className="text-white">{selectedPlayerForFichas.displayName}</strong>
+                            </p>
+                            
+                            <div className="space-y-4">
+                                <div className="flex gap-4">
+                                    <label className="flex items-center">
+                                        <input type="radio" name="fichasAction" value="give" checked={fichasAction === 'give'} onChange={() => setFichasAction('give')} className="form-radio h-5 w-5 text-green-500 bg-gray-700 border-gray-600 focus:ring-green-500" />
+                                        <span className="ml-2 text-green-400">Dar Fichas</span>
+                                    </label>
+                                    <label className="flex items-center">
+                                        <input type="radio" name="fichasAction" value="remove" checked={fichasAction === 'remove'} onChange={() => setFichasAction('remove')} className="form-radio h-5 w-5 text-red-500 bg-gray-700 border-gray-600 focus:ring-red-500" />
+                                        <span className="ml-2 text-red-400">Remover Fichas</span>
+                                    </label>
+                                </div>
+                                <div>
+                                    <label htmlFor="fichas-amount" className="block text-sm font-medium text-gray-300 mb-1">Quantidade</label>
+                                    <input
+                                        id="fichas-amount"
+                                        type="number"
+                                        value={fichasAmount}
+                                        onChange={(e) => setFichasAmount(e.target.value)}
+                                        className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg"
+                                        placeholder="Ex: 50"
+                                        required
+                                    />
+                                </div>
+                                {fichasAction === 'remove' && (
+                                    <div>
+                                        <label htmlFor="fichas-justification" className="block text-sm font-medium text-gray-300 mb-1">Justificação (Obrigatório)</label>
+                                        <textarea
+                                            id="fichas-justification"
+                                            value={fichasJustification}
+                                            onChange={(e) => setFichasJustification(e.target.value)}
+                                            rows={3}
+                                            className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg"
+                                            placeholder="Ex: Reembolso por erro no sistema."
+                                            required
+                                        />
+                                    </div>
+                                )}
+                            </div>
+
+                            {fichasError && <p className="mt-4 text-center text-red-400 bg-red-900 bg-opacity-50 p-2 rounded-lg">{fichasError}</p>}
+
+                            <div className="mt-6 flex justify-end gap-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setIsManageFichasModalOpen(false)}
+                                    className="py-2 px-4 bg-gray-600 hover:bg-gray-700 rounded-lg font-semibold"
+                                    disabled={isProcessingFichas}
+                                >
+                                    Cancelar
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="py-2 px-6 bg-blue-700 hover:bg-blue-800 rounded-lg font-bold disabled:bg-blue-900 disabled:cursor-not-allowed flex items-center"
+                                    disabled={isProcessingFichas}
+                                >
+                                    {isProcessingFichas ? 'Processando...' : 'Confirmar'}
                                 </button>
                             </div>
                         </form>

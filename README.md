@@ -11,14 +11,14 @@ Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real cons
 - **Lobby do Jogo:** Uma área central onde os jogadores podem ver seu saldo, comprar cartelas e entrar na próxima partida.
 - **Chat em Tempo Real no Lobby:** Converse com outros jogadores no lobby enquanto espera o início do jogo.
 - **Compra de Cartelas:** Os jogadores podem comprar até 10 cartelas por rodada usando fichas virtuais (F).
-- **Bônus Diário:** Possibilidade de resgatar 10 Fichas (F) gratuitas uma vez por dia para continuar jogando.
+- **Bônus Diário e de Boas-Vindas:** Novos jogadores recebem um bônus de boas-vindas. Além disso, todos podem resgatar um bônus diário gratuito uma vez por dia para continuar jogando. Os valores são configuráveis pelo administrador.
 - **Jogabilidade Automatizada:** Sente-se e assista! O sistema marca automaticamente os números sorteados em suas cartelas.
 - **Detecção Automática de Vencedor:** O jogo detecta automaticamente o primeiro jogador a completar uma cartela inteira (blackout) e encerra a partida.
 - **Ranking Dinâmico:** Um placar na tela do jogo mostra o progresso dos jogadores em tempo real, indicando quantos números faltam para cada um.
 - **Status de Conexão do Jogador:** Veja quem está online ou offline através de um indicador de status (verde/vermelho) no ranking.
 - **Modo Espectador:** Entre no jogo como espectador para assistir à partida em tempo real, visualizando as cartelas de todos os jogadores, sem participar ativamente.
 - **Gerenciamento de Perfil:** Os jogadores podem atualizar seu nome de usuário e alterar sua senha.
-- **Recuperação de Erros:** Em caso de uma falha de conexão crítica, um botão "Reiniciar Sessão" permite que você volte facilmente para a tela de login.
+- **Recuperação de Erros:** Em caso de uma falha de conexão crítica, um botão "Reiniciar Sessão" permite que você volte facilmente para la tela de login.
 
 ### Para Administradores
 - **Painel de Administração:** Uma interface exclusiva para o administrador monitorar e controlar o jogo.
@@ -31,9 +31,12 @@ Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real cons
 - **Moderação de Chat:** Monitore e apague mensagens do chat do lobby diretamente do painel de administração. Cada exclusão é registrada em um log de auditoria para transparência.
 - **Gerenciamento de Jogadores:**
     - **Remover Cartela de Jogador:** Remova a última cartela de um jogador com uma justificação obrigatória. O jogador é reembolsado, e a ação fica registrada.
+    - **Dar/Remover Fichas:** Adicione ou remova fichas da conta de um jogador. A remoção requer uma justificação obrigatória e ambas as ações são registradas no log de auditoria.
+- **Configurações Globais:**
+    - **Configurações de Tempo:** Ajuste a duração dos contadores de tempo do lobby, sorteio e tela de vencedores.
+    - **Configuração de Bônus:** Defina os valores do "Bônus de Boas-Vindas" para novos jogadores e do "Bônus Diário" que pode ser resgatado a cada 24 horas.
 - **Histórico de Vendas:** Monitore um log em tempo real de todas as cartelas compradas na rodada, incluindo quem comprou, o ID da cartela e quando.
 - **Busca de Histórico e Chat:** Filtre rapidamente o histórico de vendas e as mensagens do chat por nome de jogador ou conteúdo da mensagem.
-- **Configurações de Tempo:** Ajuste a duração dos contadores de tempo do lobby, sorteio e tela de vencedores.
 - **Log de Ações do Administrador:** Um histórico detalhado de todas as ações administrativas (resetar jogo, pausar, remover cartela, etc.) é registrado, mostrando quem fez o quê, quando e com qual justificativa, garantindo total transparência.
 
 ---
@@ -53,7 +56,7 @@ Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real cons
 O objetivo é ser o primeiro jogador a completar uma cartela inteira (todos os 24 números). O sistema detecta o vencedor automaticamente.
 
 ### Como Jogar
-1.  **Crie uma Conta e Faça Login:** Use seu e-mail ou conta Google para acessar o jogo. Novos jogadores recebem um bônus de 100 Fichas (F).
+1.  **Crie uma Conta e Faça Login:** Use seu e-mail ou conta Google para acessar o jogo. Novos jogadores recebem um bônus de boas-vindas em Fichas (F).
 2.  **Acesse o Lobby:** Após o login, você estará no lobby. Aqui você pode conversar com outros jogadores e ver seu saldo de fichas.
 3.  **Compre Suas Cartelas:** Antes de a partida começar, clique no botão "Comprar Cartela (10 F)". Cada cartela custa 10 Fichas. Você pode comprar até 10 cartelas por rodada. As cartelas são válidas para uma única partida; você precisará comprar novas cartelas para cada nova rodada.
 4.  **Aguarde o Início:** O jogo não começa automaticamente. O administrador iniciará a partida manualmente. A exigência mínima é de **2 jogadores e 2 cartelas vendidas**.

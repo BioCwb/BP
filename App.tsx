@@ -89,10 +89,15 @@ export default function App() {
         const docSnap = await userDocRef.get();
         // FIX: Switched from v9 docSnap.exists() to v8 docSnap.exists
         if (!docSnap.exists) {
+            // Fetch welcome bonus from config, or default to 100
+            const configRef = db.collection('game_config').doc('bonuses');
+            const configDoc = await configRef.get();
+            const welcomeBonus = configDoc.exists ? configDoc.data()?.welcomeBonus || 100 : 100;
+
              const newUserData: UserData = {
                 displayName: user.displayName || 'BingoPlayer',
                 email: user.email!,
-                fichas: 100 // Welcome bonus
+                fichas: welcomeBonus,
             };
             // FIX: Switched from v9 setDoc(...) to v8 userDocRef.set(...)
             await userDocRef.set(newUserData);
@@ -169,6 +174,9 @@ export default function App() {
         await auth.signOut();
       } else {
         setLoginSuccess(true);
+        setTimeout(() => {
+            // The onAuthStateChanged listener will handle the view change.
+        }, 1500);
       }
     } catch (err: any) {
       setError('E-mail ou senha inválidos.');
@@ -184,6 +192,9 @@ export default function App() {
         // FIX: Switched from v9 signInWithPopup(auth, ...) to v8 auth.signInWithPopup(...)
         await auth.signInWithPopup(googleProvider);
         setLoginSuccess(true);
+        setTimeout(() => {
+            // The onAuthStateChanged listener will handle the view change.
+        }, 1500);
     } catch (err: any) {
         if (err.code !== 'auth/popup-closed-by-user') {
             setError('Falha ao entrar com o Google. Por favor, tente novamente.');
@@ -204,6 +215,11 @@ export default function App() {
       return;
     }
     try {
+      // Fetch welcome bonus from config, or default to 100
+      const configRef = db.collection('game_config').doc('bonuses');
+      const configDoc = await configRef.get();
+      const welcomeBonus = configDoc.exists ? configDoc.data()?.welcomeBonus || 100 : 100;
+
       // FIX: Switched from v9 createUserWithEmailAndPassword(auth, ...) to v8 auth.createUserWithEmailAndPassword(...)
       const userCredential = await auth.createUserWithEmailAndPassword(registerEmail, registerPassword);
       const user = userCredential.user;
@@ -215,7 +231,7 @@ export default function App() {
         const newUserData: UserData = {
           displayName: registerUsername,
           email: registerEmail,
-          fichas: 100 // Welcome bonus
+          fichas: welcomeBonus,
         };
         // FIX: Switched from v9 setDoc(doc(db,...),...) to v8 db.collection(...).doc(...).set(...)
         await db.collection("users").doc(user.uid).set(newUserData);
@@ -369,7 +385,7 @@ export default function App() {
     <div className={appContainerClasses}>
         {viewMode === 'auth' && !showVerificationMessage && !needsVerification && (
             <div className="text-center mb-6 sm:mb-8">
-                <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white">NOITE DO BINGO</h1>
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-white">NOITE DO BINGO</h1>
                 <p className="mt-4 text-lg text-gray-300">Sua vez de ganhar!</p>
             </div>
         )}
