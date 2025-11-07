@@ -691,9 +691,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                                 return (
                                                     <div className="space-y-4 max-h-64 overflow-y-auto pr-2">
                                                         {playerCardDetails[player.uid].map((card, index) => (
-                                                            <div key={card.id} className="bg-gray-900 p-3 rounded-lg">
+                                                            <div key={card?.id || index} className="bg-gray-900 p-3 rounded-lg">
                                                                 <div className="flex items-center justify-between mb-3">
-                                                                    <p className="text-base font-semibold text-purple-300">Cartela #{index + 1} <span className="text-xs text-gray-400 font-mono">(ID: {card.id.substring(0,8)})</span></p>
+                                                                    <p className="text-base font-semibold text-purple-300">Cartela #{index + 1} <span className="text-xs text-gray-400 font-mono">(ID: {card?.id?.substring(0, 8) || 'Inválido'})</span></p>
                                                                      <button
                                                                         onClick={() => setSelectedCardModal(card)}
                                                                         className="p-1 text-gray-400 hover:text-white transition-colors"
@@ -756,7 +756,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                 filteredPurchaseHistory.map(item => (
                                     <div key={item.id} className="bg-gray-700 p-2 rounded-md text-sm">
                                         <p className="font-semibold text-purple-300">{item.playerName}</p>
-                                        <p className="text-xs text-gray-400 font-mono">ID: {item.cardId.substring(0, 12)}</p>
+                                        <p className="text-xs text-gray-400 font-mono">ID: {item.cardId?.substring(0, 12) || 'N/A'}</p>
                                         <p className="text-xs text-gray-500 text-right">{item.timestamp ? new Date(item.timestamp.toDate()).toLocaleTimeString('pt-BR') : '...'}</p>
                                     </div>
                                 ))
