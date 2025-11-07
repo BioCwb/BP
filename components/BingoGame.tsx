@@ -368,7 +368,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                 </div>
                 <div className="text-center">
                     {gameState.status === 'running' && lastDrawnNumber && (
-                        <div key={lastDrawnNumber} className="animate-pulse">
+                        <div key={lastDrawnNumber} className="last-number-animation">
                             <p className="text-lg">Última Bola:</p> 
                             <span className="font-bold text-6xl text-green-400 drop-shadow-lg">{getBingoLetter(lastDrawnNumber)}-{lastDrawnNumber}</span>
                         </div>
