@@ -64,6 +64,7 @@ export default function App() {
   const [registerUsername, setRegisterUsername] = useState('');
   const [registerEmail, setRegisterEmail] = useState('');
   const [registerPassword, setRegisterPassword] = useState('');
+  // FIX: Renamed the state setter from setRegisterPassword to setRegisterConfirmPassword to avoid redeclaring the same variable.
   const [registerConfirmPassword, setRegisterConfirmPassword] = useState('');
 
   const { showNotification } = useNotification();
@@ -317,6 +318,7 @@ export default function App() {
                   <InputField id="register-username" label="Nome de usuário" type="text" value={registerUsername} onChange={(e) => setRegisterUsername(e.target.value)} placeholder="Escolha um nome de usuário" icon={<UserIcon />} />
                   <InputField id="register-email" label="E-mail" type="email" value={registerEmail} onChange={(e) => setRegisterEmail(e.target.value)} placeholder="Digite seu e-mail" icon={<EmailIcon />} />
                   <InputField id="register-password" label="Senha" type="password" value={registerPassword} onChange={(e) => setRegisterPassword(e.target.value)} placeholder="Crie uma senha" icon={<LockIcon />} />
+                  {/* FIX: Used the correct state setter 'setRegisterConfirmPassword' for the confirm password field. */}
                   <InputField id="register-confirm-password" label="Confirmar Senha" type="password" value={registerConfirmPassword} onChange={(e) => setRegisterConfirmPassword(e.target.value)} placeholder="Confirme sua senha" icon={<LockIcon />} />
                 </AuthForm>
               )}
@@ -364,7 +366,7 @@ export default function App() {
         )}
         {renderContent()}
         <footer className="fixed bottom-0 right-0 p-2 text-xs text-gray-500">
-            Versão: 1.0.15
+            Versão: 1.0.16
         </footer>
     </div>
   );

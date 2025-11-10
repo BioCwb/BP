@@ -59,7 +59,18 @@ interface PixConfig {
     whatsapp: string;
 }
 
-type AdminTab = 'overview' | 'users' | 'logs' | 'settings';
+interface PixHistoryItem {
+    id: string;
+    targetUid: string;
+    targetName: string;
+    adminUid: string;
+    adminName: string;
+    fichasAmount: number;
+    brlAmount: number;
+    timestamp: firebase.firestore.Timestamp;
+}
+
+type AdminTab = 'overview' | 'users' | 'pixHistory' | 'logs' | 'settings';
 const USERS_PER_PAGE = 10;
 
 
@@ -112,6 +123,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [firstUserDocs, setFirstUserDocs] = useState<(firebase.firestore.DocumentSnapshot | null)[]>([null]);
     const [hasMoreUsers, setHasMoreUsers] = useState(true);
     const [onlineStatus, setOnlineStatus] = useState<{ [uid: string]: boolean }>({});
+    const [pixHistory, setPixHistory] = useState<PixHistoryItem[]>([]);
+    const [pixHistorySearch, setPixHistorySearch] = useState('');
 
     // State for the "Clear All Cards" confirmation modal
     const [isClearAllModalOpen, setIsClearAllModalOpen] = useState(false);
@@ -125,6 +138,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const chatCollectionRef = useMemo(() => db.collection('chat'), []);
     const adminLogsCollectionRef = useMemo(() => db.collection('admin_logs'), []);
     const pixConfigDocRef = useMemo(() => db.collection('configs').doc('payment'), []);
+    const pixHistoryCollectionRef = useMemo(() => db.collection('pix_history'), []);
+
 
     useEffect(() => {
         const handleVisibilityChange = () => setIsTabVisible(document.visibilityState === 'visible');
@@ -179,13 +194,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             setAdminLogs(logs);
         });
 
+        const unsubPixHistory = pixHistoryCollectionRef.orderBy('timestamp', 'desc').onSnapshot((snapshot) => {
+            const history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PixHistoryItem));
+            setPixHistory(history);
+        });
+
         return () => { 
             unsubscribe();
             unsubHistory();
             unsubChat();
             unsubLogs();
+            unsubPixHistory();
         };
-    }, [gameDocRef, purchaseHistoryCollectionRef, chatCollectionRef, adminLogsCollectionRef]);
+    }, [gameDocRef, purchaseHistoryCollectionRef, chatCollectionRef, adminLogsCollectionRef, pixHistoryCollectionRef]);
     
     // Game loop logic, allowing the Admin Panel to act as the host
     useEffect(() => {
@@ -388,6 +409,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             (log.justification && log.justification.toLowerCase().includes(lowercasedQuery))
         );
     }, [adminLogs, adminLogSearch]);
+
+    const filteredPixHistory = useMemo(() => {
+        if (!pixHistorySearch) return pixHistory;
+        const lowercasedQuery = pixHistorySearch.toLowerCase();
+        return pixHistory.filter(item =>
+            item.targetName.toLowerCase().includes(lowercasedQuery) ||
+            item.adminName.toLowerCase().includes(lowercasedQuery)
+        );
+    }, [pixHistory, pixHistorySearch]);
     
     const handleDeleteChatMessage = async (message: ChatMessage) => {
         const adminUser = auth.currentUser;
@@ -457,33 +487,64 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             showNotification('Valor inválido.', 'error');
             return;
         }
-        
-        const actionType = amount > 0 ? 'add_fichas' : 'remove_fichas';
-        const verb = amount > 0 ? 'adicionar' : 'remover';
     
-        const justification = window.prompt(`Justificativa para ${verb} ${Math.abs(amount)} fichas:`);
+        const justification = window.prompt(`Justificativa para ${amount > 0 ? 'adicionar' : 'remover'} ${Math.abs(amount)} fichas:`);
         if (!justification || justification.trim() === '') {
             showNotification('A justificação é obrigatória.', 'error');
             return;
         }
     
-        try {
-            const userRef = db.collection('users').doc(managedUser.uid);
-            await userRef.update({ fichas: increment(amount) });
+        let brlAmount = 0;
+        if (amount > 0) {
+            const brlAmountStr = window.prompt(`Qual o valor em R$ pago via Pix por ${managedUser.displayName}? (Deixe em branco se não for uma compra)`);
+            if (brlAmountStr) {
+                const parsedAmount = parseFloat(brlAmountStr.replace(',', '.'));
+                if (isNaN(parsedAmount) || parsedAmount <= 0) {
+                    showNotification('Valor em R$ inválido.', 'error');
+                    return;
+                }
+                brlAmount = parsedAmount;
+            }
+        }
     
-            await db.collection('admin_logs').add({
+        try {
+            const batch = db.batch();
+            const userRef = db.collection('users').doc(managedUser.uid);
+            const adminLogRef = db.collection('admin_logs').doc();
+    
+            batch.update(userRef, { fichas: increment(amount) });
+    
+            const logDetails: any = { amount };
+            if (brlAmount > 0) {
+                logDetails.brlAmount = brlAmount;
+            }
+            batch.set(adminLogRef, {
                 adminUid: user.uid,
                 adminName: user.displayName,
-                action: actionType,
+                action: amount > 0 ? 'add_fichas' : 'remove_fichas',
                 targetUid: managedUser.uid,
                 targetName: managedUser.displayName,
-                details: { amount },
+                details: logDetails,
                 justification: justification,
                 timestamp: serverTimestamp(),
             });
     
-            showNotification(`${Math.abs(amount)} fichas ${verb === 'adicionar' ? 'adicionadas para' : 'removidas de'} ${managedUser.displayName}.`, 'success');
-            // Optimistically update local state for better UX
+            if (brlAmount > 0) {
+                const pixHistoryRef = db.collection('pix_history').doc();
+                batch.set(pixHistoryRef, {
+                    targetUid: managedUser.uid,
+                    targetName: managedUser.displayName,
+                    adminUid: user.uid,
+                    adminName: user.displayName,
+                    fichasAmount: amount,
+                    brlAmount: brlAmount,
+                    timestamp: serverTimestamp(),
+                });
+            }
+    
+            await batch.commit();
+    
+            showNotification(`${Math.abs(amount)} fichas ${amount > 0 ? 'adicionadas para' : 'removidas de'} ${managedUser.displayName}.`, 'success');
             setManagedUsers(users => users.map(u => u.uid === managedUser.uid ? { ...u, fichas: u.fichas + amount } : u));
         } catch (error) {
             showNotification('Falha ao editar fichas.', 'error');
@@ -1073,6 +1134,42 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                         </div>
                     </div>
                 );
+            case 'pixHistory':
+                 return (
+                    <div className="bg-gray-900 p-4 rounded-lg flex flex-col min-h-0 h-[500px]">
+                        <h3 className="text-xl font-semibold mb-2 text-center flex-shrink-0">Histórico de Compras PIX</h3>
+                        <input
+                            type="text"
+                            placeholder="Buscar por jogador ou admin..."
+                            value={pixHistorySearch}
+                            onChange={(e) => setPixHistorySearch(e.target.value)}
+                            className="w-full p-2 mb-2 bg-gray-700 border border-gray-600 rounded-lg text-sm placeholder-gray-400 flex-shrink-0"
+                        />
+                        <div className="space-y-2 overflow-y-auto pr-2 flex-grow">
+                            {filteredPixHistory.length > 0 ? (
+                                filteredPixHistory.map(item => (
+                                    <div key={item.id} className="bg-gray-700 p-3 rounded-md text-sm">
+                                        <div className="flex justify-between items-start">
+                                            <div>
+                                                <p className="font-bold text-lg text-purple-300">{item.targetName}</p>
+                                                <p className="text-xs text-gray-400">Admin: {item.adminName}</p>
+                                            </div>
+                                            <div className="text-right">
+                                                 <p className="font-bold text-lg text-green-400">R$ {item.brlAmount.toFixed(2).replace('.', ',')}</p>
+                                                 <p className="text-yellow-400">{item.fichasAmount} Fichas</p>
+                                            </div>
+                                        </div>
+                                        <p className="text-xs text-gray-500 text-right mt-1">{item.timestamp ? new Date(item.timestamp.toDate()).toLocaleString('pt-BR') : '...'}</p>
+                                    </div>
+                                ))
+                            ) : (
+                                <p className="text-center text-gray-400 italic mt-4">
+                                    {pixHistory.length === 0 ? 'Nenhuma compra via Pix registrada.' : 'Nenhum resultado encontrado.'}
+                                </p>
+                            )}
+                        </div>
+                    </div>
+                );
             case 'logs':
                 return (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 max-h-[600px] overflow-hidden">
@@ -1242,6 +1339,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                     </TabButton>
                     <TabButton isActive={activeTab === 'users'} onClick={() => setActiveTab('users')}>
                         Gerenciar Usuários
+                    </TabButton>
+                    <TabButton isActive={activeTab === 'pixHistory'} onClick={() => setActiveTab('pixHistory')}>
+                        Histórico PIX
                     </TabButton>
                     <TabButton isActive={activeTab === 'logs'} onClick={() => setActiveTab('logs')}>
                         Logs & Moderação

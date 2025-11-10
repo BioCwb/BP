@@ -1,6 +1,6 @@
 # Noite do Bingo
 
-**Versão Atual: 1.0.15**
+**Versão Atual: 1.0.16**
 
 Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real construído com React, TypeScript e Firebase. Este projeto oferece uma experiência de jogo completa com autenticação de usuários, um lobby interativo, jogabilidade em tempo real e um painel de administração robusto para gerenciamento total da partida.
 
@@ -32,11 +32,15 @@ Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real cons
   - **Resetar Jogo:** Reinicie a rodada, limpando o estado atual do jogo e preparando-o para uma nova partida.
   - **Limpar Todas as Cartelas:** Remova *todas* as cartelas de *todos* os jogadores da rodada. Esta ação requer a senha do administrador e uma justificação, reembolsa integralmente todos os jogadores e zera o prêmio da rodada.
 - **Moderação de Chat:** Monitore e apague mensagens do chat do lobby diretamente do painel de administração. Cada exclusão é registrada em um log de auditoria para transparência.
-- **Gerenciamento de Jogadores:**
-    - **Remover Cartela de Jogador:** Remova a última cartela de um jogador com uma justificação obrigatória. O jogador é reembolsado, e a ação fica registrada.
+- **Gerenciamento de Usuários:**
+    - **Visão Completa:** Visualize, busque e gerencie todos os usuários cadastrados, não apenas os online.
+    - **Editar Fichas:** Adicione ou remova fichas de qualquer jogador com uma justificação obrigatória.
+    - **Resetar Senha:** Envie e-mails de redefinição de senha para os jogadores.
+    - **Remover Cartela de Jogador:** Remova uma cartela específica de um jogador com uma justificação obrigatória. O jogador é reembolsado, e a ação fica registrada.
+- **Histórico de Compras PIX:** Um log dedicado para visualizar todas as compras de fichas via Pix, incluindo jogador, valor, administrador que confirmou e data.
 - **Histórico de Vendas Persistente:** Monitore um log em tempo real de todas as cartelas compradas, que agora é persistido entre as rodadas. Cada compra é associada a um `roundId` (ID da rodada) para facilitar a auditoria e análise de vendas ao longo do tempo.
 - **Busca de Histórico e Chat:** Filtre rapidamente o histórico de vendas e as mensagens do chat por nome de jogador ou conteúdo da mensagem.
-- **Configurações de Tempo:** Ajuste a duração dos contadores de tempo do lobby, sorteio e tela de vencedores.
+- **Configurações de Tempo e Pagamento:** Ajuste a duração dos contadores de tempo do jogo e configure os dados para pagamentos via Pix (chave, nome, cidade, WhatsApp).
 - **Log de Ações do Administrador:** Um histórico detalhado de todas as ações administrativas (resetar jogo, pausar, remover cartela, etc.) é registrado, mostrando quem fez o quê, quando e com qual justificativa, garantindo total transparência.
 
 ---
