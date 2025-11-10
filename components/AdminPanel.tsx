@@ -84,7 +84,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [chatSearch, setChatSearch] = useState('');
     const [adminLogSearch, setAdminLogSearch] = useState('');
     const [selectedCardModal, setSelectedCardModal] = useState<BingoCardData | null>(null);
-    const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+    const [activeTab, setActiveTab] = useState<AdminTab>('players');
 
     // State for the "Clear All Cards" confirmation modal
     const [isClearAllModalOpen, setIsClearAllModalOpen] = useState(false);
