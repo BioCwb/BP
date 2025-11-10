@@ -392,23 +392,64 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     }, [gameState?.players]);
 
     const handleForceStart = async () => {
-        if (gameState?.status !== 'waiting') {
-            showNotification('O jogo já começou ou não está em estado de espera.', 'error');
+        if (!gameState) return;
+    
+        const isGameInProgress = gameState.status !== 'waiting';
+    
+        if (isGameInProgress && !window.confirm("Esta ação irá resetar a partida atual e iniciar uma nova rodada imediatamente. Deseja continuar?")) {
             return;
         }
-        
+    
         try {
-            await gameDocRef.update({ status: 'running', countdown: gameState!.drawIntervalDuration || 5 });
-            
-            await db.collection('admin_logs').add({
+            const batch = db.batch();
+    
+            // Part 1: Cleanup from the previous game, if it was in progress.
+            if (isGameInProgress) {
+                const playerIds = Object.keys(gameState.players || {});
+                if (playerIds.length > 0) {
+                     // Save current game state to history
+                    const historyRef = db.collection('game_history').doc();
+                    batch.set(historyRef, {
+                        winners: gameState.winners || [],
+                        drawnNumbers: gameState.drawnNumbers || [],
+                        prizePool: gameState.prizePool || 0,
+                        completedAt: serverTimestamp()
+                    });
+                    // Delete all players' active cards for the current game
+                    for (const uid of playerIds) {
+                        const playerCardsRef = db.collection('player_cards').doc(uid).collection('cards').doc('active_game');
+                        batch.delete(playerCardsRef);
+                    }
+                }
+            }
+    
+            // Part 2: Reset the game state and immediately start a new round.
+            const newRoundId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+            batch.update(gameDocRef, {
+                status: 'running', // Start the game immediately
+                drawnNumbers: [],
+                prizePool: 0,
+                winners: [],
+                countdown: gameState.drawIntervalDuration || 5,
+                lastWinnerAnnouncement: "Nova partida iniciada pelo administrador.",
+                players: {},
+                pauseReason: '',
+                roundId: newRoundId,
+            });
+    
+            // Part 3: Log the admin action.
+            const adminLogRef = db.collection('admin_logs').doc();
+            batch.set(adminLogRef, {
                 adminUid: user.uid,
                 adminName: user.displayName,
-                action: 'force_start_game',
+                action: 'force_start_game_override',
                 timestamp: serverTimestamp(),
             });
-
-            showNotification('Jogo iniciado com sucesso!', 'success');
+    
+            await batch.commit();
+            showNotification('Nova rodada iniciada com sucesso!', 'success');
         } catch (error) {
+            console.error("Error during force start:", error);
             showNotification('Falha ao forçar o início do jogo.', 'error');
         }
     };
@@ -620,7 +661,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                              <h3 className="text-xl font-semibold mb-4 text-center">Controles do Jogo</h3>
                              <div className="space-y-2">
                                 <div className="flex gap-2">
-                                    <button onClick={handleForceStart} disabled={gameState?.status !== 'waiting'} className="flex-1 py-2 px-4 bg-green-600 hover:bg-green-700 rounded-lg font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed">Forçar Início</button>
+                                    <button onClick={handleForceStart} className="flex-1 py-2 px-4 bg-green-600 hover:bg-green-700 rounded-lg font-semibold">Forçar Início</button>
                                     {(gameState?.status === 'running' || gameState?.status === 'paused') && (
                                         <button 
                                             onClick={handleTogglePause}
