@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import type firebase from 'firebase/compat/app';
 import { db, serverTimestamp, increment, auth, EmailAuthProvider, FieldPath } from '../firebase/config';
 import type { GameState } from './BingoGame';
@@ -45,6 +45,7 @@ interface OnlinePlayer {
     uid: string;
     displayName: string;
     cardCount: number;
+    status: 'online' | 'offline';
 }
 
 type AdminTab = 'overview' | 'players' | 'logs';
@@ -71,6 +72,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [gameState, setGameState] = useState<GameState | null>(null);
     const [onlinePlayersCount, setOnlinePlayersCount] = useState(0);
     const [allOnlinePlayers, setAllOnlinePlayers] = useState<OnlinePlayer[]>([]);
+    const monitoredPlayers = useRef<Map<string, { displayName: string; cardCount: number; lastSeen: number }>>(new Map());
     const [lobbyTime, setLobbyTime] = useState(30);
     const [drawTime, setDrawTime] = useState(8);
     const [endTime, setEndTime] = useState(15);
@@ -139,46 +141,64 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
         const statusCollectionRef = db.collection('player_status');
         const usersCollectionRef = db.collection('users');
     
-        const fetchOnlinePlayers = async () => {
-            const thirtySecondsAgo = new Date(Date.now() - 30000);
+        const fetchAndProcessPlayers = async () => {
+            const now = Date.now();
+            const thirtySecondsAgo = new Date(now - 30000);
+            
             try {
+                // 1. Get currently online players
                 const statusSnapshot = await statusCollectionRef.where('lastSeen', '>', thirtySecondsAgo).get();
-                
                 setOnlinePlayersCount(statusSnapshot.size);
     
-                if (statusSnapshot.empty) {
-                    setAllOnlinePlayers([]);
-                    return;
-                }
-    
-                const onlineUserIds = statusSnapshot.docs.map(doc => doc.id);
-                
-                if (onlineUserIds.length === 0) {
-                    setAllOnlinePlayers([]);
-                    return;
-                }
-    
-                const usersSnapshot = await usersCollectionRef.where(FieldPath.documentId(), 'in', onlineUserIds).get();
-                
-                const onlineUsersData = usersSnapshot.docs.map(doc => ({
-                    uid: doc.id,
-                    displayName: doc.data().displayName || 'Jogador Desconhecido',
-                }));
+                const onlineUserIds = new Set(statusSnapshot.docs.map(doc => doc.id));
+                const uidsToFetch = statusSnapshot.docs
+                    .filter(doc => !monitoredPlayers.current.has(doc.id))
+                    .map(doc => doc.id);
 
-                // FIX: Fetch card count from the source of truth (`player_cards`) instead of `gameState` to ensure consistency.
-                const playersWithCardDataPromises = onlineUsersData.map(async (player) => {
-                    const playerCardsRef = db.collection('player_cards').doc(player.uid).collection('cards').doc('active_game');
-                    const playerCardsDoc = await playerCardsRef.get();
-                    const cardCount = playerCardsDoc.exists ? (playerCardsDoc.data()?.cards?.length || 0) : 0;
-                    return {
-                        ...player,
-                        cardCount: cardCount,
-                    };
-                });
+                // 2. Fetch data for new players
+                if (uidsToFetch.length > 0) {
+                    const usersSnapshot = await usersCollectionRef.where(FieldPath.documentId(), 'in', uidsToFetch).get();
+                    usersSnapshot.forEach(doc => {
+                         monitoredPlayers.current.set(doc.id, {
+                            displayName: doc.data().displayName || 'Jogador Desconhecido',
+                            cardCount: 0, // Will be updated below
+                            lastSeen: now,
+                        });
+                    });
+                }
+
+                // 3. Update lastSeen and card counts for online players
+                for (const uid of onlineUserIds) {
+                    const player = monitoredPlayers.current.get(uid);
+                    if (player) {
+                        player.lastSeen = now;
+                        const playerCardsRef = db.collection('player_cards').doc(uid).collection('cards').doc('active_game');
+                        const playerCardsDoc = await playerCardsRef.get();
+                        player.cardCount = playerCardsDoc.exists ? (playerCardsDoc.data()?.cards?.length || 0) : 0;
+                    }
+                }
     
-                const playersWithCardData = await Promise.all(playersWithCardDataPromises);
-                
-                const sortedPlayers = playersWithCardData.sort((a, b) => b.cardCount - a.cardCount || a.displayName.localeCompare(b.displayName));
+                // 4. Generate the final state list from the monitored players ref
+                const playersForState: OnlinePlayer[] = [];
+                monitoredPlayers.current.forEach((player, uid) => {
+                    // Remove players who have been offline for more than 5 minutes
+                    if (now - player.lastSeen > 300000) { // 5 minutes
+                        monitoredPlayers.current.delete(uid);
+                        return;
+                    }
+                    
+                    playersForState.push({
+                        uid: uid,
+                        displayName: player.displayName,
+                        cardCount: player.cardCount,
+                        status: onlineUserIds.has(uid) ? 'online' : 'offline',
+                    });
+                });
+
+                const sortedPlayers = playersForState.sort((a, b) => {
+                    if (a.status !== b.status) return a.status === 'online' ? -1 : 1; // online first
+                    return b.cardCount - a.cardCount || a.displayName.localeCompare(b.displayName);
+                });
                 
                 setAllOnlinePlayers(sortedPlayers);
     
@@ -187,8 +207,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             }
         };
     
-        fetchOnlinePlayers();
-        const intervalId = setInterval(fetchOnlinePlayers, 10000);
+        fetchAndProcessPlayers(); // Initial fetch
+        const intervalId = setInterval(fetchAndProcessPlayers, 10000); // Refresh every 10 seconds
     
         return () => clearInterval(intervalId);
     }, []);
@@ -653,9 +673,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                 allOnlinePlayers.map(player => (
                                     <div key={player.uid} className="bg-gray-700 rounded-md transition-all duration-300">
                                         <div className="flex items-center justify-between p-2 cursor-pointer hover:bg-gray-600" onClick={() => handleTogglePlayer(player.uid)}>
-                                            <div>
-                                                <p className="font-semibold">{player.displayName}</p>
-                                                <p className="text-sm text-gray-400">{player.cardCount} cartela(s)</p>
+                                            <div className="flex items-center gap-3">
+                                                <span className={`w-3 h-3 rounded-full flex-shrink-0 ${player.status === 'online' ? 'bg-green-500' : 'bg-red-500'}`} title={player.status}></span>
+                                                <div>
+                                                    <p className="font-semibold">{player.displayName}</p>
+                                                    <p className="text-sm text-gray-400">{player.cardCount} cartela(s)</p>
+                                                </div>
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 <button
