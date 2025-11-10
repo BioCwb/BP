@@ -48,6 +48,8 @@ const getBingoLetter = (num: number) => {
     return '';
 };
 
+// This needs to be consistent with the one in GameLobby.tsx
+const ADMIN_UID = 'fKlSv57pZeSGPGiQG2z4NKAD9qi2';
 
 export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLobby, onSessionReset, isSpectator = false }) => {
     const [gameState, setGameState] = useState<GameState | null>(null);
@@ -265,6 +267,25 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
             return () => clearInterval(timer);
         }
     }, [gameState?.status, gameState?.endGameDelayDuration, gameState?.host, user.uid, onBackToLobby, autoResetGame]);
+
+    const handleAdminStartGame = async () => {
+        if (user.uid !== ADMIN_UID || !gameState || gameState.status !== 'waiting') return;
+
+        try {
+            await gameDocRef.update({ status: 'running', countdown: gameState.drawIntervalDuration || 5 });
+            
+            await db.collection('admin_logs').add({
+                adminUid: user.uid,
+                adminName: user.displayName,
+                action: 'force_start_game_from_game_view',
+                timestamp: serverTimestamp(),
+            });
+
+            showNotification('Jogo iniciado com sucesso!', 'success');
+        } catch (error) {
+            showNotification('Falha ao forçar o início do jogo.', 'error');
+        }
+    };
     
     const sortedPlayers = useMemo(() => {
         if (!gameState || !gameState.players) return [];
@@ -323,6 +344,8 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
         );
     };
 
+    const isAdmin = user.uid === ADMIN_UID;
+
     return (
         <div className="w-full max-w-7xl mx-auto p-4 flex flex-col flex-grow relative h-screen">
             {showGameStartedMessage && (
@@ -338,7 +361,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                     )}
                 </div>
             )}
-            <header className="flex-shrink-0 flex justify-between items-center bg-gray-900 bg-opacity-70 p-4 rounded-lg mb-4">
+            <header className="flex-shrink-0 flex justify-between items-start bg-gray-900 bg-opacity-70 p-4 rounded-lg mb-4">
                 <div>
                     <h1 className="text-3xl font-bold text-purple-400">{isSpectator ? "MODO ESPECTADOR" : "NOITE DO BINGO"}</h1>
                      <p className="text-gray-300">Bem-vindo, {userData.displayName}</p>
@@ -357,7 +380,14 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                         <p className="text-sm mt-2">Próxima bola em: <span className="font-bold text-xl">{gameState.countdown}s</span></p>
                      )}
                 </div>
-                <button onClick={onBackToLobby} className="py-2 px-4 bg-red-600 hover:bg-red-700 rounded-lg font-semibold self-start">&larr; Voltar para o Lobby</button>
+                <div className="flex flex-col items-end gap-2">
+                    <button onClick={onBackToLobby} className="py-2 px-4 bg-red-600 hover:bg-red-700 rounded-lg font-semibold">&larr; Voltar para o Lobby</button>
+                     {isAdmin && gameState.status === 'waiting' && (
+                        <button onClick={handleAdminStartGame} className="py-2 px-4 bg-green-600 hover:bg-green-700 rounded-lg font-semibold">
+                            Iniciar Partida (Admin)
+                        </button>
+                     )}
+                </div>
             </header>
 
             {gameState.status === 'ended' && (

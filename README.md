@@ -1,6 +1,6 @@
 # Noite do Bingo
 
-**Versão Atual: 1.0.4**
+**Versão Atual: 1.0.5**
 
 Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real construído com React, TypeScript e Firebase. Este projeto oferece uma experiência de jogo completa com autenticação de usuários, um lobby interativo, jogabilidade em tempo real e um painel de administração robusto para gerenciamento total da partida.
 
@@ -24,7 +24,8 @@ Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real cons
 - **Painel de Administração:** Uma interface exclusiva para o administrador monitorar e controlar o jogo.
 - **Monitoramento em Tempo Real:** Visualize o status do jogo, o número de jogadores, a quantidade de bolas sorteadas e o prêmio acumulado.
 - **Controles Manuais do Jogo:**
-  - **Forçar Início:** Inicie a partida manualmente a qualquer momento, desde que haja pelo menos 2 jogadores com cartelas compradas.
+  - **Forçar Início Flexível:** Inicie a partida manualmente a qualquer momento a partir do painel de administração, desde que o jogo esteja no estado 'waiting', sem a necessidade de um número mínimo de jogadores.
+  - **Início Rápido na Tela de Jogo:** Inicie a partida diretamente da tela de jogo através de um botão exclusivo para administradores, visível quando o jogo está aguardando para começar.
   - **Pausar/Retomar:** Pause o jogo, informando um motivo que será exibido para todos os jogadores, e retome quando desejar.
   - **Resetar Jogo:** Reinicie a rodada, limpando o estado atual do jogo e preparando-o para uma nova partida.
   - **Limpar Todas as Cartelas:** Remova *todas* as cartelas de *todos* os jogadores da rodada. Esta ação requer a senha do administrador e uma justificação, reembolsa integralmente todos os jogadores e zera o prêmio da rodada.

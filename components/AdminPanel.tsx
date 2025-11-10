@@ -371,26 +371,25 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
         return { totalPlayers: playersArray.length, totalCards: cardCount };
     }, [gameState?.players]);
 
-    const canForceStart = gameState?.status === 'waiting' && totalPlayers >= 2;
-
     const handleForceStart = async () => {
-        if (canForceStart) {
-            try {
-                await gameDocRef.update({ status: 'running', countdown: gameState!.drawIntervalDuration || 5 });
-                
-                await db.collection('admin_logs').add({
-                    adminUid: user.uid,
-                    adminName: user.displayName,
-                    action: 'force_start_game',
-                    timestamp: serverTimestamp(),
-                });
+        if (gameState?.status !== 'waiting') {
+            showNotification('O jogo já começou ou não está em estado de espera.', 'error');
+            return;
+        }
+        
+        try {
+            await gameDocRef.update({ status: 'running', countdown: gameState!.drawIntervalDuration || 5 });
+            
+            await db.collection('admin_logs').add({
+                adminUid: user.uid,
+                adminName: user.displayName,
+                action: 'force_start_game',
+                timestamp: serverTimestamp(),
+            });
 
-                showNotification('Jogo iniciado com sucesso!', 'success');
-            } catch (error) {
-                showNotification('Falha ao forçar o início do jogo.', 'error');
-            }
-        } else {
-            showNotification('O jogo requer no mínimo 2 jogadores com cartelas para iniciar.', 'error');
+            showNotification('Jogo iniciado com sucesso!', 'success');
+        } catch (error) {
+            showNotification('Falha ao forçar o início do jogo.', 'error');
         }
     };
     
@@ -601,7 +600,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                              <h3 className="text-xl font-semibold mb-4 text-center">Controles do Jogo</h3>
                              <div className="space-y-2">
                                 <div className="flex gap-2">
-                                    <button onClick={handleForceStart} disabled={!canForceStart} className="flex-1 py-2 px-4 bg-green-600 hover:bg-green-700 rounded-lg font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed">Forçar Início</button>
+                                    <button onClick={handleForceStart} disabled={gameState?.status !== 'waiting'} className="flex-1 py-2 px-4 bg-green-600 hover:bg-green-700 rounded-lg font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed">Forçar Início</button>
                                     {(gameState?.status === 'running' || gameState?.status === 'paused') && (
                                         <button 
                                             onClick={handleTogglePause}
@@ -622,12 +621,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                     </button>
                                 </div>
                              </div>
-                             {!canForceStart && gameState?.status === 'waiting' && (
-                                <p className="text-center text-sm text-yellow-400 mt-2">
-                                    Para iniciar: mínimo de 2 jogadores.<br />
-                                    (Atualmente: {totalPlayers} jogador(es))
-                                </p>
-                             )}
                         </div>
 
                         {/* Time Settings */}
