@@ -254,6 +254,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
                 cardId: newCardData.id,
                 cardNumbers: newCardData.numbers,
                 timestamp: serverTimestamp(),
+                roundId: gameData.roundId, // Associate purchase with the current round
             });
         });
     } catch (e: any) {

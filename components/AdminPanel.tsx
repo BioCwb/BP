@@ -21,6 +21,7 @@ interface PurchaseHistoryItem {
     playerName: string;
     cardId: string;
     timestamp: firebase.firestore.Timestamp;
+    roundId?: string;
 }
 
 interface ChatMessage {
@@ -394,7 +395,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     };
     
     const handleResetGame = async () => {
-        if (window.confirm('Tem certeza que deseja resetar o jogo? Isso limpará todos os jogadores e cartelas.')) {
+        if (window.confirm('Tem certeza que deseja resetar o jogo? Isso limpará todos os jogadores e cartelas da rodada atual, mas o histórico de compras será mantido.')) {
             if (!gameState) {
                 showNotification('Estado do jogo não encontrado.', 'error');
                 return;
@@ -404,9 +405,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                 const batch = db.batch();
                 const adminLogRef = db.collection('admin_logs').doc();
 
-
                 // 1. Save game to history if it has ended
-                if (gameState.status === 'ended') {
+                if (gameState.status === 'ended' || gameState.status === 'running') {
                     const historyRef = db.collection('game_history').doc();
                     batch.set(historyRef, {
                         winners: gameState.winners,
@@ -425,7 +425,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                     }
                 }
 
-                // 3. Reset the main game state document
+                // 3. Reset the main game state document with a new round ID
+                const newRoundId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
                 batch.update(gameDocRef, { 
                     status: 'waiting', 
                     drawnNumbers: [], 
@@ -434,16 +435,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                     countdown: gameState.lobbyCountdownDuration || 15,
                     lastWinnerAnnouncement: announcement,
                     players: {},
-                    pauseReason: ''
+                    pauseReason: '',
+                    roundId: newRoundId,
                 });
 
-                // 4. Clear the purchase history for the new round
-                const purchaseHistorySnapshot = await purchaseHistoryCollectionRef.get();
-                purchaseHistorySnapshot.forEach(doc => {
-                    batch.delete(doc.ref);
-                });
-
-                // 5. Log the admin action
+                // 4. Log the admin action
                 batch.set(adminLogRef, {
                     adminUid: user.uid,
                     adminName: user.displayName,
@@ -755,8 +751,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                     filteredPurchaseHistory.map(item => (
                                         <div key={item.id} className="bg-gray-700 p-2 rounded-md text-sm">
                                             <p className="font-semibold text-purple-300">{item.playerName}</p>
-                                            <p className="text-xs text-gray-400 font-mono">ID: {item.cardId?.substring(0, 12) || 'N/A'}</p>
-                                            <p className="text-xs text-gray-500 text-right">{item.timestamp ? new Date(item.timestamp.toDate()).toLocaleTimeString('pt-BR') : '...'}</p>
+                                            {item.roundId && <p className="text-xs text-gray-400 font-mono">Rodada: {item.roundId.substring(0, 8)}</p>}
+                                            <p className="text-xs text-gray-500 text-right">{item.timestamp ? new Date(item.timestamp.toDate()).toLocaleString('pt-BR') : '...'}</p>
                                         </div>
                                     ))
                                 ) : (

@@ -23,6 +23,7 @@ export interface GameState {
     lobbyCountdownDuration: number;
     drawIntervalDuration: number;
     endGameDelayDuration: number;
+    roundId?: string;
 }
 
 interface BingoCardData {
@@ -223,7 +224,8 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                 batch.delete(playerCardsRef);
             }
 
-            // 3. Reset the main game state document
+            // 3. Reset the main game state document with a new round ID
+            const newRoundId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
             batch.update(gameDocRef, { 
                 status: 'waiting', 
                 drawnNumbers: [], 
@@ -232,14 +234,8 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                 countdown: gameState.lobbyCountdownDuration || 15,
                 lastWinnerAnnouncement: announcement,
                 players: {},
-                pauseReason: ''
-            });
-
-            // 4. Clear the purchase history
-            const purchaseHistoryCollectionRef = db.collection('purchase_history');
-            const purchaseHistorySnapshot = await purchaseHistoryCollectionRef.get();
-            purchaseHistorySnapshot.forEach(doc => {
-                batch.delete(doc.ref);
+                pauseReason: '',
+                roundId: newRoundId,
             });
             
             await batch.commit();
