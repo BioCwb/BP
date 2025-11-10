@@ -392,23 +392,44 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     }, [gameState?.players]);
 
     const handleForceStart = async () => {
-        const confirmMessage = gameState?.status !== 'waiting' 
-            ? "Esta ação irá resetar a partida atual e iniciar uma nova rodada imediatamente. Deseja continuar?"
-            : "Tem certeza de que deseja forçar o início de uma nova partida?";
-
-        if (!window.confirm(confirmMessage)) {
+        if (!gameState) {
+            showNotification('Estado do jogo não encontrado.', 'error');
             return;
         }
 
-        try {
-            await db.runTransaction(async (transaction) => {
-                const gameDoc = await transaction.get(gameDocRef);
-                if (!gameDoc.exists) {
-                    throw new Error("O estado do jogo não foi encontrado.");
-                }
-                const currentGameState = gameDoc.data() as GameState;
+        // Case 1: Game is waiting, just start it safely.
+        if (gameState.status === 'waiting') {
+            if (!window.confirm("Tem certeza de que deseja forçar o início da partida?")) return;
 
-                if (currentGameState.status !== 'waiting') {
+            try {
+                await gameDocRef.update({
+                    status: 'running',
+                    countdown: gameState.drawIntervalDuration || 5,
+                });
+
+                await db.collection('admin_logs').add({
+                    adminUid: user.uid,
+                    adminName: user.displayName,
+                    action: 'force_start_game_from_waiting',
+                    timestamp: serverTimestamp(),
+                });
+
+                showNotification('Partida iniciada com sucesso!', 'success');
+
+            } catch (error: any) {
+                showNotification(error.message || 'Falha ao iniciar a partida.', 'error');
+            }
+        // Case 2: Game is running/paused, so perform a full reset and start a new round.
+        } else {
+            if (!window.confirm("Esta ação irá resetar a partida atual e iniciar uma nova rodada imediatamente. Deseja continuar?")) return;
+
+            try {
+                await db.runTransaction(async (transaction) => {
+                    const gameDoc = await transaction.get(gameDocRef);
+                    if (!gameDoc.exists) throw new Error("O estado do jogo não foi encontrado.");
+                    const currentGameState = gameDoc.data() as GameState;
+
+                    // Archive the old game if it had players
                     const playerIds = Object.keys(currentGameState.players || {});
                     if (playerIds.length > 0) {
                         const historyRef = db.collection('game_history').doc();
@@ -420,39 +441,42 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                             roundId: currentGameState.roundId || 'unknown'
                         });
 
+                        // Delete all players' active cards
                         for (const uid of playerIds) {
                             const playerCardsRef = db.collection('player_cards').doc(uid).collection('cards').doc('active_game');
                             transaction.delete(playerCardsRef);
                         }
                     }
-                }
+                    
+                    // Reset the game state for the new round
+                    const newRoundId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+                    transaction.update(gameDocRef, {
+                        status: 'running',
+                        drawnNumbers: [],
+                        prizePool: 0,
+                        winners: [],
+                        countdown: currentGameState.drawIntervalDuration || 5,
+                        lastWinnerAnnouncement: "Nova partida iniciada pelo administrador.",
+                        players: {},
+                        pauseReason: '',
+                        roundId: newRoundId,
+                    });
 
-                const newRoundId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-                transaction.update(gameDocRef, {
-                    status: 'running',
-                    drawnNumbers: [],
-                    prizePool: 0,
-                    winners: [],
-                    countdown: currentGameState.drawIntervalDuration || 5,
-                    lastWinnerAnnouncement: "Nova partida iniciada pelo administrador.",
-                    players: {},
-                    pauseReason: '',
-                    roundId: newRoundId,
+                    // Log the admin action
+                    const adminLogRef = db.collection('admin_logs').doc();
+                    transaction.set(adminLogRef, {
+                        adminUid: user.uid,
+                        adminName: user.displayName,
+                        action: 'force_reset_and_start_game',
+                        timestamp: serverTimestamp(),
+                    });
                 });
 
-                const adminLogRef = db.collection('admin_logs').doc();
-                transaction.set(adminLogRef, {
-                    adminUid: user.uid,
-                    adminName: user.displayName,
-                    action: 'force_start_game_override',
-                    timestamp: serverTimestamp(),
-                });
-            });
+                showNotification('Nova rodada iniciada com sucesso!', 'success');
 
-            showNotification('Nova rodada iniciada com sucesso!', 'success');
-        } catch (error: any) {
-            console.error("Error during force start:", error);
-            showNotification(error.message || 'Falha ao forçar o início do jogo.', 'error');
+            } catch (error: any) {
+                showNotification(error.message || 'Falha ao forçar o início do jogo.', 'error');
+            }
         }
     };
     
@@ -1036,7 +1060,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                 >
                                     {isClearingCards ? (
                                         <>
-                                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                             </svg>
