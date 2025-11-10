@@ -143,7 +143,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             try {
                 const statusSnapshot = await statusCollectionRef.where('lastSeen', '>', thirtySecondsAgo).get();
                 
-                // Update the stat box count
                 setOnlinePlayersCount(statusSnapshot.size);
     
                 if (statusSnapshot.empty) {
@@ -164,14 +163,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                     uid: doc.id,
                     displayName: doc.data().displayName || 'Jogador Desconhecido',
                 }));
+
+                // FIX: Fetch card count from the source of truth (`player_cards`) instead of `gameState` to ensure consistency.
+                const playersWithCardDataPromises = onlineUsersData.map(async (player) => {
+                    const playerCardsRef = db.collection('player_cards').doc(player.uid).collection('cards').doc('active_game');
+                    const playerCardsDoc = await playerCardsRef.get();
+                    const cardCount = playerCardsDoc.exists ? (playerCardsDoc.data()?.cards?.length || 0) : 0;
+                    return {
+                        ...player,
+                        cardCount: cardCount,
+                    };
+                });
     
-                // Map this data to the format we want, including card count from gameState
-                const playersWithCardData = onlineUsersData.map(player => ({
-                    ...player,
-                    cardCount: gameState?.players[player.uid]?.cardCount || 0
-                })).sort((a, b) => b.cardCount - a.cardCount || a.displayName.localeCompare(b.displayName)); // Sort by card count, then name
-    
-                setAllOnlinePlayers(playersWithCardData);
+                const playersWithCardData = await Promise.all(playersWithCardDataPromises);
+                
+                const sortedPlayers = playersWithCardData.sort((a, b) => b.cardCount - a.cardCount || a.displayName.localeCompare(b.displayName));
+                
+                setAllOnlinePlayers(sortedPlayers);
     
             } catch (err) {
                 console.error("Error getting online players: ", err);
@@ -182,7 +190,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
         const intervalId = setInterval(fetchOnlinePlayers, 10000);
     
         return () => clearInterval(intervalId);
-    }, [gameState]);
+    }, []);
 
 
     const filteredPurchaseHistory = useMemo(() => {
