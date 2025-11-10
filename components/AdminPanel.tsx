@@ -392,7 +392,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
         return { totalPlayers: playersArray.length, totalCards: cardCount };
     }, [gameState?.players]);
 
-    const handleForceStart = async () => {
+    const handleStartGame = async () => {
         if (!gameState) {
             showNotification('Estado do jogo não encontrado.', 'error');
             return;
@@ -400,18 +400,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
 
         // Case 1: Game is waiting, just start it safely.
         if (gameState.status === 'waiting') {
-            if (!window.confirm("Tem certeza de que deseja forçar o início da partida?")) return;
+            if (!window.confirm("Tem certeza de que deseja iniciar a partida?")) return;
 
             try {
                 await gameDocRef.update({
                     status: 'running',
+                    host: user.uid, // Assign host
                     countdown: gameState.drawIntervalDuration || 5,
                 });
 
                 await db.collection('admin_logs').add({
                     adminUid: user.uid,
                     adminName: user.displayName,
-                    action: 'force_start_game_from_waiting',
+                    action: 'start_game_from_waiting',
                     timestamp: serverTimestamp(),
                 });
 
@@ -430,7 +431,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                     if (!gameDoc.exists) throw new Error("O estado do jogo não foi encontrado.");
                     const currentGameState = gameDoc.data() as GameState;
 
-                    // Archive the old game if it had players
                     const playerIds = Object.keys(currentGameState.players || {});
                     if (playerIds.length > 0) {
                         const historyRef = db.collection('game_history').doc();
@@ -442,17 +442,16 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                             roundId: currentGameState.roundId || 'unknown'
                         });
 
-                        // Delete all players' active cards
                         for (const uid of playerIds) {
                             const playerCardsRef = db.collection('player_cards').doc(uid).collection('cards').doc('active_game');
                             transaction.delete(playerCardsRef);
                         }
                     }
                     
-                    // Reset the game state for the new round
                     const newRoundId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
                     transaction.update(gameDocRef, {
                         status: 'running',
+                        host: user.uid,
                         drawnNumbers: [],
                         prizePool: 0,
                         winners: [],
@@ -463,7 +462,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                         roundId: newRoundId,
                     });
 
-                    // Log the admin action
                     const adminLogRef = db.collection('admin_logs').doc();
                     transaction.set(adminLogRef, {
                         adminUid: user.uid,
@@ -492,7 +490,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                 const batch = db.batch();
                 const adminLogRef = db.collection('admin_logs').doc();
 
-                // 1. Save game to history if it has ended
                 if (gameState.status === 'ended' || gameState.status === 'running') {
                     const historyRef = db.collection('game_history').doc();
                     batch.set(historyRef, {
@@ -503,7 +500,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                     });
                 }
                 
-                // 2. Delete all active cards from participating players
                 const playerIds = Object.keys(gameState.players || {});
                 if (playerIds.length > 0) {
                     for (const uid of playerIds) {
@@ -512,7 +508,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                     }
                 }
 
-                // 3. Reset the main game state document with a new round ID
                 const newRoundId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
                 batch.update(gameDocRef, { 
                     status: 'waiting', 
@@ -523,10 +518,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                     lastWinnerAnnouncement: announcement,
                     players: {},
                     pauseReason: '',
+                    host: null,
                     roundId: newRoundId,
                 });
 
-                // 4. Log the admin action
                 batch.set(adminLogRef, {
                     adminUid: user.uid,
                     adminName: user.displayName,
@@ -549,13 +544,13 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
         const reason = isPausing ? window.prompt('Por favor, informe o motivo da pausa:', 'Pausa técnica') : '';
 
         if (isPausing && !reason) {
-            return; // Don't pause if no reason is given
+            return;
         }
         
         try {
             if (isPausing) {
                 await gameDocRef.update({ status: 'paused', pauseReason: reason });
-            } else { // is resuming from 'paused'
+            } else {
                 await gameDocRef.update({ 
                     status: 'running', 
                     pauseReason: '', 
@@ -689,7 +684,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                  <h3 className="text-xl font-semibold mb-4 text-center">Controles do Jogo</h3>
                                  <div className="space-y-2">
                                     <div className="flex gap-2">
-                                        <button onClick={handleForceStart} className="flex-1 py-2 px-4 bg-green-600 hover:bg-green-700 rounded-lg font-semibold">Forçar Início</button>
+                                        <button onClick={handleStartGame} className="flex-1 py-2 px-4 bg-green-600 hover:bg-green-700 rounded-lg font-semibold">Iniciar</button>
                                         {(gameState?.status === 'running' || gameState?.status === 'paused') && (
                                             <button 
                                                 onClick={handleTogglePause}
@@ -1066,7 +1061,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                 >
                                     {isClearingCards ? (
                                         <>
-                                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                             </svg>

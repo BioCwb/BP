@@ -61,6 +61,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
     const lastSeenTimestampsRef = useRef<{ [uid: string]: number }>({});
     const [showGameStartedMessage, setShowGameStartedMessage] = useState(false);
     const prevStatusRef = useRef<GameState['status'] | undefined>();
+    const isGameLoopRunning = useRef(false);
 
 
     const gameDocRef = useMemo(() => db.collection('games').doc('active_game'), []);
@@ -237,6 +238,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                 lastWinnerAnnouncement: announcement,
                 players: {},
                 pauseReason: '',
+                host: null,
                 roundId: newRoundId,
             });
             
@@ -268,11 +270,110 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
         }
     }, [gameState?.status, gameState?.endGameDelayDuration, gameState?.host, user.uid, onBackToLobby, autoResetGame]);
 
+    // Main game loop - ONLY RUNS FOR THE HOST
+    useEffect(() => {
+        if (!gameState || gameState.host !== user.uid || gameState.status !== 'running') {
+            return;
+        }
+    
+        const gameLoop = setInterval(async () => {
+            if (isGameLoopRunning.current) {
+                return; // Prevent loop overlap if a transaction is slow
+            }
+            isGameLoopRunning.current = true;
+    
+            try {
+                await db.runTransaction(async (transaction) => {
+                    const gameDoc = await transaction.get(gameDocRef);
+                    if (!gameDoc.exists) throw new Error("Jogo não encontrado na transação.");
+                    const currentGameState = gameDoc.data() as GameState;
+    
+                    if (currentGameState.status !== 'running') {
+                        return; // Stop loop if game is no longer running
+                    }
+    
+                    let newCountdown = currentGameState.countdown - 1;
+    
+                    if (newCountdown > 0) {
+                        transaction.update(gameDocRef, { countdown: newCountdown });
+                    } else {
+                        // Time to draw a new number
+                        const drawnNumbers = currentGameState.drawnNumbers;
+                        if (drawnNumbers.length >= 60) {
+                            transaction.update(gameDocRef, { status: 'ended', winners: [] }); // Draw
+                            return;
+                        }
+    
+                        let newNumber;
+                        do {
+                            newNumber = Math.floor(Math.random() * 60) + 1;
+                        } while (drawnNumbers.includes(newNumber));
+    
+                        const updatedDrawnNumbers = [...drawnNumbers, newNumber];
+                        const winners: { uid: string, displayName: string, card: number[] }[] = [];
+                        const updatedPlayers = { ...currentGameState.players };
+    
+                        const playerIds = Object.keys(currentGameState.players || {});
+                        for (const uid of playerIds) {
+                            const playerCardsRef = db.collection('player_cards').doc(uid).collection('cards').doc('active_game');
+                            const playerCardsDoc = await transaction.get(playerCardsRef);
+                            
+                            if (playerCardsDoc.exists) {
+                                const cards = playerCardsDoc.data()?.cards as BingoCardData[] || [];
+                                let bestProgress = 99;
+    
+                                for (const card of cards) {
+                                    const { isBingo, numbersToWin } = calculateCardProgress(card.numbers, updatedDrawnNumbers);
+                                    if (isBingo) {
+                                        winners.push({
+                                            uid: uid,
+                                            displayName: currentGameState.players[uid].displayName,
+                                            card: card.numbers
+                                        });
+                                    }
+                                    if (numbersToWin < bestProgress) {
+                                        bestProgress = numbersToWin;
+                                    }
+                                }
+                                if (updatedPlayers[uid]) {
+                                    updatedPlayers[uid].progress = bestProgress;
+                                }
+                            }
+                        }
+    
+                        if (winners.length > 0) {
+                            transaction.update(gameDocRef, {
+                                status: 'ended',
+                                winners: winners,
+                                drawnNumbers: updatedDrawnNumbers,
+                                players: updatedPlayers,
+                            });
+                        } else {
+                            transaction.update(gameDocRef, {
+                                drawnNumbers: updatedDrawnNumbers,
+                                countdown: currentGameState.drawIntervalDuration || 5,
+                                players: updatedPlayers,
+                            });
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error("Erro no loop do jogo:", error);
+                // Optionally, pause the game on error
+                // await gameDocRef.update({ status: 'paused', pauseReason: 'Erro interno do servidor.' });
+            } finally {
+                isGameLoopRunning.current = false;
+            }
+        }, 1000); // Ticks every second
+    
+        return () => clearInterval(gameLoop);
+    }, [gameState, user.uid, gameDocRef]);
+
     const handleAdminStartGame = async () => {
         if (user.uid !== ADMIN_UID || !gameState || gameState.status !== 'waiting') return;
 
         try {
-            await gameDocRef.update({ status: 'running', countdown: gameState.drawIntervalDuration || 5 });
+            await gameDocRef.update({ status: 'running', countdown: gameState.drawIntervalDuration || 5, host: user.uid });
             
             await db.collection('admin_logs').add({
                 adminUid: user.uid,
