@@ -46,12 +46,20 @@
         animation: mark-number-pulse 1.2s ease-in-out infinite;
       }
 
-      @keyframes highlight-pulse {
-        0%, 100% { border-color: #FBBF24; box-shadow: 0 0 3px #FBBF24; }
-        50% { border-color: #F59E0B; box-shadow: 0 0 10px #FBBF24, 0 0 15px #F59E0B; }
+      @keyframes last-number-attention {
+        0%, 100% { 
+          background-color: #16A34A; /* green-600 */
+          transform: scale(1.0);
+          box-shadow: 0 0 6px #34D399, 0 0 12px #34D399; 
+        }
+        50% { 
+          background-color: #22C55E; /* green-500 */
+          transform: scale(1.1);
+          box-shadow: 0 0 12px #6EE7B7, 0 0 24px #6EE7B7;
+        }
       }
-      .highlight-animation {
-        animation: highlight-pulse 1.5s ease-in-out infinite;
+      .last-number-attention-animation {
+        animation: last-number-attention 1.5s ease-in-out infinite;
       }
 
       @keyframes last-number-pulse {
