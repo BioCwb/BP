@@ -7,6 +7,7 @@ import { EyeIcon } from './icons/EyeIcon';
 import { useNotification } from '../context/NotificationContext';
 import { BingoMasterBoard } from './BingoMasterBoard';
 import { calculateCardProgress } from '../utils/bingoUtils';
+import { CoinIcon } from './icons/CoinIcon';
 
 interface AdminPanelProps {
     user: firebase.User;
@@ -50,7 +51,14 @@ interface OnlinePlayer {
     status: 'online' | 'offline';
 }
 
-type AdminTab = 'overview' | 'players' | 'logs';
+interface PixConfig {
+    key: string;
+    name: string;
+    city: string;
+    whatsapp: string;
+}
+
+type AdminTab = 'overview' | 'players' | 'logs' | 'settings';
 
 const TabButton: React.FC<{
     isActive: boolean;
@@ -92,6 +100,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [activeTab, setActiveTab] = useState<AdminTab>('overview');
     const isGameLoopRunning = useRef(false);
     const [isTabVisible, setIsTabVisible] = useState(() => document.visibilityState === 'visible');
+    const [pixConfig, setPixConfig] = useState<PixConfig>({ key: '', name: '', city: '', whatsapp: '' });
+    const [isLoadingPixConfig, setIsLoadingPixConfig] = useState(true);
 
     // State for the "Clear All Cards" confirmation modal
     const [isClearAllModalOpen, setIsClearAllModalOpen] = useState(false);
@@ -104,6 +114,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const purchaseHistoryCollectionRef = useMemo(() => db.collection('purchase_history'), []);
     const chatCollectionRef = useMemo(() => db.collection('chat'), []);
     const adminLogsCollectionRef = useMemo(() => db.collection('admin_logs'), []);
+    const pixConfigDocRef = useMemo(() => db.collection('configs').doc('payment'), []);
 
     useEffect(() => {
         const handleVisibilityChange = () => setIsTabVisible(document.visibilityState === 'visible');
@@ -112,6 +123,23 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             document.removeEventListener('visibilitychange', handleVisibilityChange);
         };
     }, []);
+    
+    useEffect(() => {
+        const unsubPix = pixConfigDocRef.onSnapshot((doc) => {
+            if (doc.exists) {
+                const data = doc.data() as any;
+                setPixConfig({
+                    key: data.pixKey || '',
+                    name: data.merchantName || '',
+                    city: data.merchantCity || '',
+                    whatsapp: data.whatsappNumber || ''
+                });
+            }
+            setIsLoadingPixConfig(false);
+        });
+        return () => unsubPix();
+    }, [pixConfigDocRef]);
+
 
     useEffect(() => {
         const unsubscribe = gameDocRef.onSnapshot((doc) => {
@@ -408,6 +436,45 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             }
         }
     };
+    
+    const handleAddFichas = async (player: OnlinePlayer) => {
+        const amountStr = window.prompt(`Quantas fichas adicionar para ${player.displayName}?`);
+        if (!amountStr) return;
+
+        const amount = parseInt(amountStr, 10);
+        if (isNaN(amount) || amount <= 0) {
+            showNotification('Valor inválido.', 'error');
+            return;
+        }
+
+        const justification = window.prompt(`Justificativa para adicionar ${amount} fichas (ex: Pagamento Pix confirmado):`);
+        if (!justification || justification.trim() === '') {
+            showNotification('A justificação é obrigatória.', 'error');
+            return;
+        }
+
+        try {
+            const userRef = db.collection('users').doc(player.uid);
+            await userRef.update({ fichas: increment(amount) });
+
+            await db.collection('admin_logs').add({
+                adminUid: user.uid,
+                adminName: user.displayName,
+                action: 'add_fichas',
+                targetUid: player.uid,
+                targetName: player.displayName,
+                details: { amount },
+                justification: justification,
+                timestamp: serverTimestamp(),
+            });
+
+            showNotification(`${amount} fichas adicionadas para ${player.displayName}.`, 'success');
+        } catch (error) {
+            showNotification('Falha ao adicionar fichas.', 'error');
+            console.error(error);
+        }
+    };
+
 
     const handleRemoveCard = async (playerId: string) => {
         if (!gameState || !gameState.players[playerId]) return;
@@ -584,6 +651,36 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             showNotification('Falha ao salvar configurações.', 'error');
         }
     };
+    
+    const handleSavePixConfig = async () => {
+        if (!pixConfig.key || !pixConfig.name || !pixConfig.city || !pixConfig.whatsapp) {
+            showNotification('Por favor, preencha todos os campos de configuração do PIX.', 'error');
+            return;
+        }
+
+        try {
+            const configData = {
+                pixKey: pixConfig.key,
+                merchantName: pixConfig.name,
+                merchantCity: pixConfig.city,
+                whatsappNumber: pixConfig.whatsapp,
+            };
+            await pixConfigDocRef.set(configData, { merge: true });
+
+            await db.collection('admin_logs').add({
+                adminUid: user.uid,
+                adminName: user.displayName,
+                action: 'save_pix_config',
+                details: configData,
+                timestamp: serverTimestamp(),
+            });
+
+            showNotification('Configurações de PIX salvas com sucesso!', 'success');
+        } catch (error) {
+            showNotification('Falha ao salvar configurações de PIX.', 'error');
+        }
+    };
+
 
     const { totalPlayers, totalCards } = useMemo(() => {
         if (!gameState?.players) {
@@ -952,6 +1049,12 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                             </div>
                                             <div className="flex items-center gap-2">
                                                 <button
+                                                    onClick={(e) => { e.stopPropagation(); handleAddFichas(player); }}
+                                                    className="py-1 px-3 bg-green-600 hover:bg-green-700 rounded-lg text-sm font-semibold flex items-center gap-1"
+                                                >
+                                                    <CoinIcon className="w-4 h-4" /> Add Fichas
+                                                </button>
+                                                <button
                                                     onClick={(e) => { e.stopPropagation(); handleRemoveCard(player.uid); }}
                                                     disabled={!player.cardCount || player.cardCount === 0 || gameState?.status !== 'waiting'}
                                                     className="py-1 px-3 bg-red-600 hover:bg-red-700 rounded-lg text-sm font-semibold disabled:bg-gray-500 disabled:cursor-not-allowed"
@@ -1114,6 +1217,33 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                         </div>
                     </div>
                 );
+            case 'settings':
+                return (
+                     <div className="bg-gray-900 p-6 rounded-lg max-w-2xl mx-auto">
+                        <h3 className="text-2xl font-semibold mb-6 text-center text-purple-300">Configurações de Pagamento (PIX)</h3>
+                        {isLoadingPixConfig ? <p>Carregando configurações...</p> : (
+                            <div className="space-y-4">
+                                <div>
+                                    <label htmlFor="pix-key" className="block text-sm font-medium text-gray-300 mb-1">Chave Pix</label>
+                                    <input id="pix-key" type="text" value={pixConfig.key} onChange={e => setPixConfig(p => ({ ...p, key: e.target.value }))} className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg" placeholder="Sua chave PIX" />
+                                </div>
+                                <div>
+                                    <label htmlFor="pix-name" className="block text-sm font-medium text-gray-300 mb-1">Nome do Beneficiário</label>
+                                    <input id="pix-name" type="text" value={pixConfig.name} onChange={e => setPixConfig(p => ({ ...p, name: e.target.value }))} className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg" placeholder="Nome completo" />
+                                </div>
+                                <div>
+                                    <label htmlFor="pix-city" className="block text-sm font-medium text-gray-300 mb-1">Cidade do Beneficiário</label>
+                                    <input id="pix-city" type="text" value={pixConfig.city} onChange={e => setPixConfig(p => ({ ...p, city: e.target.value }))} className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg" placeholder="Cidade (sem espaços, máx. 15 caracteres)" />
+                                </div>
+                                <div>
+                                    <label htmlFor="pix-whatsapp" className="block text-sm font-medium text-gray-300 mb-1">WhatsApp para Suporte</label>
+                                    <input id="pix-whatsapp" type="text" value={pixConfig.whatsapp} onChange={e => setPixConfig(p => ({ ...p, whatsapp: e.target.value }))} className="w-full p-2 bg-gray-700 border border-gray-600 rounded-lg" placeholder="(XX) XXXXX-XXXX" />
+                                </div>
+                                <button onClick={handleSavePixConfig} className="mt-6 w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold">Salvar Configurações de PIX</button>
+                            </div>
+                        )}
+                    </div>
+                );
             default:
                 return null;
         }
@@ -1164,6 +1294,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                     </TabButton>
                     <TabButton isActive={activeTab === 'logs'} onClick={() => setActiveTab('logs')}>
                         Logs & Moderação
+                    </TabButton>
+                    <TabButton isActive={activeTab === 'settings'} onClick={() => setActiveTab('settings')}>
+                        Configurações
                     </TabButton>
                 </nav>
             </div>
