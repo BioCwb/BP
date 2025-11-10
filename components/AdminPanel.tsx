@@ -491,12 +491,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                 const playerCardsData = playerCardsDoc.data();
                 const currentCards = playerCardsData?.cards as BingoCardData[] || [];
                 
-                const cardIndex = currentCards.findIndex(c => c.id === cardToDelete.id);
+                let cardIndex = -1;
+
+                if (cardToDelete.id) {
+                    cardIndex = currentCards.findIndex(c => c.id === cardToDelete.id);
+                } else {
+                    // Fallback for old cards without an ID. We assume `numbers` array is unique enough.
+                    const cardToDeleteNumbersJSON = JSON.stringify(cardToDelete.numbers);
+                    cardIndex = currentCards.findIndex(c => JSON.stringify(c.numbers) === cardToDeleteNumbersJSON);
+                }
+
                 if (cardIndex === -1) {
                     throw new Error("A cartela selecionada não foi encontrada para este jogador.");
                 }
-
-                const updatedCards = currentCards.filter(c => c.id !== cardToDelete.id);
+                
+                // Create a new array without the card at the found index.
+                const updatedCards = [...currentCards.slice(0, cardIndex), ...currentCards.slice(cardIndex + 1)];
 
                 transaction.update(playerCardsRef, { cards: updatedCards });
                 transaction.update(gameDocRef, {
@@ -513,7 +523,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                     action: 'remove_specific_card',
                     justification: justification,
                     details: {
-                        removedCardId: cardToDelete.id,
+                        removedCardId: cardToDelete.id || `legacy_card_${cardIndex}`, // Provide a fallback to prevent undefined
                         removedCardNumbers: cardToDelete.numbers,
                     },
                     timestamp: serverTimestamp(),
@@ -524,8 +534,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             
             // Update local state for immediate UI feedback
             setPlayerCardDetails(prev => {
-                const updatedPlayerCards = (prev[ownerId] || []).filter(c => c.id !== cardToDelete.id);
-                return { ...prev, [ownerId]: updatedPlayerCards };
+                if (!prev[ownerId]) return prev;
+
+                let cardIndex = -1;
+                if (cardToDelete.id) {
+                    cardIndex = prev[ownerId].findIndex(c => c.id === cardToDelete.id);
+                } else {
+                    const cardToDeleteNumbersJSON = JSON.stringify(cardToDelete.numbers);
+                    cardIndex = prev[ownerId].findIndex(c => JSON.stringify(c.numbers) === cardToDeleteNumbersJSON);
+                }
+
+                if (cardIndex !== -1) {
+                    const updatedPlayerCards = [...prev[ownerId].slice(0, cardIndex), ...prev[ownerId].slice(cardIndex + 1)];
+                    return { ...prev, [ownerId]: updatedPlayerCards };
+                }
+
+                return prev;
             });
 
             setSelectedCardModal(null); // Close modal on success
@@ -535,6 +559,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             showNotification(error.message || 'Falha ao remover a cartela específica.', 'error');
         }
     };
+
 
     const handleSaveSettings = async () => {
         try {
