@@ -1,13 +1,14 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import type firebase from 'firebase/compat/app';
-import { db, serverTimestamp, increment, auth, EmailAuthProvider, FieldPath } from '../firebase/config';
+import { db, serverTimestamp, increment, auth, EmailAuthProvider } from '../firebase/config';
 import type { GameState } from './BingoGame';
 import { TrashIcon } from './icons/TrashIcon';
 import { EyeIcon } from './icons/EyeIcon';
 import { useNotification } from '../context/NotificationContext';
 import { BingoMasterBoard } from './BingoMasterBoard';
 import { calculateCardProgress } from '../utils/bingoUtils';
-import { CoinIcon } from './icons/CoinIcon';
+import { EditIcon } from './icons/EditIcon';
+import { KeyIcon } from './icons/KeyIcon';
 
 interface AdminPanelProps {
     user: firebase.User;
@@ -44,11 +45,11 @@ interface AdminLogItem {
     timestamp: firebase.firestore.Timestamp;
 }
 
-interface OnlinePlayer {
+interface ManagedUser {
     uid: string;
     displayName: string;
-    cardCount: number;
-    status: 'online' | 'offline';
+    email: string;
+    fichas: number;
 }
 
 interface PixConfig {
@@ -58,7 +59,9 @@ interface PixConfig {
     whatsapp: string;
 }
 
-type AdminTab = 'overview' | 'players' | 'logs' | 'settings';
+type AdminTab = 'overview' | 'users' | 'logs' | 'settings';
+const USERS_PER_PAGE = 10;
+
 
 const TabButton: React.FC<{
     isActive: boolean;
@@ -81,8 +84,6 @@ const TabButton: React.FC<{
 export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [gameState, setGameState] = useState<GameState | null>(null);
     const [onlinePlayersCount, setOnlinePlayersCount] = useState(0);
-    const [allOnlinePlayers, setAllOnlinePlayers] = useState<OnlinePlayer[]>([]);
-    const monitoredPlayers = useRef<Map<string, { displayName: string; cardCount: number; lastSeen: number }>>(new Map());
     const [lobbyTime, setLobbyTime] = useState(30);
     const [drawTime, setDrawTime] = useState(8);
     const [endTime, setEndTime] = useState(15);
@@ -102,6 +103,15 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [isTabVisible, setIsTabVisible] = useState(() => document.visibilityState === 'visible');
     const [pixConfig, setPixConfig] = useState<PixConfig>({ key: '', name: '', city: '', whatsapp: '' });
     const [isLoadingPixConfig, setIsLoadingPixConfig] = useState(true);
+
+    const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
+    const [userSearch, setUserSearch] = useState('');
+    const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+    const [userPage, setUserPage] = useState(1);
+    const [lastUserDoc, setLastUserDoc] = useState<firebase.firestore.DocumentSnapshot | null>(null);
+    const [firstUserDocs, setFirstUserDocs] = useState<(firebase.firestore.DocumentSnapshot | null)[]>([null]);
+    const [hasMoreUsers, setHasMoreUsers] = useState(true);
+    const [onlineStatus, setOnlineStatus] = useState<{ [uid: string]: boolean }>({});
 
     // State for the "Clear All Cards" confirmation modal
     const [isClearAllModalOpen, setIsClearAllModalOpen] = useState(false);
@@ -274,82 +284,83 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
         return () => clearInterval(gameLoop);
     }, [gameState, user.uid, gameDocRef, isTabVisible]);
 
-    useEffect(() => {
-        const statusCollectionRef = db.collection('player_status');
-        const usersCollectionRef = db.collection('users');
-    
-        const fetchAndProcessPlayers = async () => {
-            const now = Date.now();
-            const thirtySecondsAgo = new Date(now - 30000);
-            
-            try {
-                // 1. Get currently online players
-                const statusSnapshot = await statusCollectionRef.where('lastSeen', '>', thirtySecondsAgo).get();
-                setOnlinePlayersCount(statusSnapshot.size);
-    
-                const onlineUserIds = new Set(statusSnapshot.docs.map(doc => doc.id));
-                const uidsToFetch = statusSnapshot.docs
-                    .filter(doc => !monitoredPlayers.current.has(doc.id))
-                    .map(doc => doc.id);
+    const fetchUsers = useCallback(async () => {
+        if (activeTab !== 'users') return;
+        setIsLoadingUsers(true);
 
-                // 2. Fetch data for new players
-                if (uidsToFetch.length > 0) {
-                    const usersSnapshot = await usersCollectionRef.where(FieldPath.documentId(), 'in', uidsToFetch).get();
-                    usersSnapshot.forEach(doc => {
-                         monitoredPlayers.current.set(doc.id, {
-                            displayName: doc.data().displayName || 'Jogador Desconhecido',
-                            cardCount: 0, // Will be updated below
-                            lastSeen: now,
-                        });
-                    });
-                }
+        try {
+            const usersCollection = db.collection('users');
+            let query: firebase.firestore.Query = usersCollection.orderBy('displayName');
 
-                // 3. Update lastSeen and card counts for online players
-                for (const uid of onlineUserIds) {
-                    const player = monitoredPlayers.current.get(uid);
-                    if (player) {
-                        player.lastSeen = now;
-                        const playerCardsRef = db.collection('player_cards').doc(uid).collection('cards').doc('active_game');
-                        const playerCardsDoc = await playerCardsRef.get();
-                        player.cardCount = playerCardsDoc.exists ? (playerCardsDoc.data()?.cards?.length || 0) : 0;
-                    }
-                }
-    
-                // 4. Generate the final state list from the monitored players ref
-                const playersForState: OnlinePlayer[] = [];
-                monitoredPlayers.current.forEach((player, uid) => {
-                    // Remove players who have been offline for more than 5 minutes
-                    if (now - player.lastSeen > 300000) { // 5 minutes
-                        monitoredPlayers.current.delete(uid);
-                        return;
-                    }
-                    
-                    playersForState.push({
-                        uid: uid,
-                        displayName: player.displayName,
-                        cardCount: player.cardCount,
-                        status: onlineUserIds.has(uid) ? 'online' : 'offline',
-                    });
-                });
-
-                const sortedPlayers = playersForState.sort((a, b) => {
-                    if (a.status !== b.status) return a.status === 'online' ? -1 : 1; // online first
-                    return b.cardCount - a.cardCount || a.displayName.localeCompare(b.displayName);
-                });
-                
-                setAllOnlinePlayers(sortedPlayers);
-    
-            } catch (err) {
-                console.error("Error getting online players: ", err);
+            if (userSearch) {
+                const lowerSearch = userSearch.toLowerCase();
+                query = query.where('displayName', '>=', lowerSearch).where('displayName', '<=', lowerSearch + '\uf8ff');
             }
-        };
-    
-        fetchAndProcessPlayers(); // Initial fetch
-        const intervalId = setInterval(fetchAndProcessPlayers, 10000); // Refresh every 10 seconds
-    
-        return () => clearInterval(intervalId);
-    }, []);
+            
+            if (userPage > 1 && firstUserDocs[userPage - 1]) {
+                query = query.startAfter(firstUserDocs[userPage - 1]);
+            }
+            
+            query = query.limit(USERS_PER_PAGE);
+            
+            const snapshot = await query.get();
+            const newUsers = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as ManagedUser));
 
+            setManagedUsers(newUsers);
+            
+            const lastDoc = snapshot.docs[snapshot.docs.length - 1];
+            setLastUserDoc(lastDoc);
+            
+            if (userPage >= firstUserDocs.length && lastDoc) {
+                setFirstUserDocs(prev => [...prev, lastDoc]);
+            }
+            setHasMoreUsers(snapshot.docs.length === USERS_PER_PAGE);
+        } catch (error) {
+            console.error("Error fetching users:", error);
+            showNotification('Falha ao carregar usuários.', 'error');
+        } finally {
+            setIsLoadingUsers(false);
+        }
+    }, [activeTab, userPage, userSearch, firstUserDocs, showNotification]);
+
+    useEffect(() => {
+        fetchUsers();
+    }, [fetchUsers]);
+
+    // Debounce search input
+    useEffect(() => {
+        const handler = setTimeout(() => {
+            // Reset pagination when search query changes
+            setUserPage(1);
+            setLastUserDoc(null);
+            setFirstUserDocs([null]);
+            fetchUsers();
+        }, 500);
+    
+        return () => {
+            clearTimeout(handler);
+        };
+    }, [userSearch]);
+
+    // Listen for online status
+    useEffect(() => {
+        const statusRef = db.collection('player_status');
+        const unsub = statusRef.onSnapshot(snapshot => {
+            const now = Date.now();
+            const currentOnline: { [uid: string]: boolean } = {};
+            let count = 0;
+            snapshot.forEach(doc => {
+                const lastSeen = doc.data().lastSeen?.toMillis();
+                if (lastSeen && (now - lastSeen < 30000)) {
+                    currentOnline[doc.id] = true;
+                    count++;
+                }
+            });
+            setOnlineStatus(currentOnline);
+            setOnlinePlayersCount(count);
+        });
+        return () => unsub();
+    }, []);
 
     const filteredPurchaseHistory = useMemo(() => {
         if (!purchaseHistorySearch) return purchaseHistory;
@@ -437,100 +448,58 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
         }
     };
     
-    const handleAddFichas = async (player: OnlinePlayer) => {
-        const amountStr = window.prompt(`Quantas fichas adicionar para ${player.displayName}?`);
+    const handleEditUserFichas = async (managedUser: ManagedUser) => {
+        const amountStr = window.prompt(`Editar Fichas para ${managedUser.displayName}.\nUse um valor negativo para remover (ex: -50).`);
         if (!amountStr) return;
-
+    
         const amount = parseInt(amountStr, 10);
-        if (isNaN(amount) || amount <= 0) {
+        if (isNaN(amount) || amount === 0) {
             showNotification('Valor inválido.', 'error');
             return;
         }
-
-        const justification = window.prompt(`Justificativa para adicionar ${amount} fichas (ex: Pagamento Pix confirmado):`);
+        
+        const actionType = amount > 0 ? 'add_fichas' : 'remove_fichas';
+        const verb = amount > 0 ? 'adicionar' : 'remover';
+    
+        const justification = window.prompt(`Justificativa para ${verb} ${Math.abs(amount)} fichas:`);
         if (!justification || justification.trim() === '') {
             showNotification('A justificação é obrigatória.', 'error');
             return;
         }
-
+    
         try {
-            const userRef = db.collection('users').doc(player.uid);
+            const userRef = db.collection('users').doc(managedUser.uid);
             await userRef.update({ fichas: increment(amount) });
-
+    
             await db.collection('admin_logs').add({
                 adminUid: user.uid,
                 adminName: user.displayName,
-                action: 'add_fichas',
-                targetUid: player.uid,
-                targetName: player.displayName,
+                action: actionType,
+                targetUid: managedUser.uid,
+                targetName: managedUser.displayName,
                 details: { amount },
                 justification: justification,
                 timestamp: serverTimestamp(),
             });
-
-            showNotification(`${amount} fichas adicionadas para ${player.displayName}.`, 'success');
+    
+            showNotification(`${Math.abs(amount)} fichas ${verb === 'adicionar' ? 'adicionadas para' : 'removidas de'} ${managedUser.displayName}.`, 'success');
+            // Optimistically update local state for better UX
+            setManagedUsers(users => users.map(u => u.uid === managedUser.uid ? { ...u, fichas: u.fichas + amount } : u));
         } catch (error) {
-            showNotification('Falha ao adicionar fichas.', 'error');
+            showNotification('Falha ao editar fichas.', 'error');
             console.error(error);
         }
     };
 
-
-    const handleRemoveCard = async (playerId: string) => {
-        if (!gameState || !gameState.players[playerId]) return;
-    
-        const justification = window.prompt(`Justifique a remoção da última cartela de ${gameState.players[playerId].displayName}:`);
-        if (!justification || justification.trim() === '') {
-            showNotification('A justificação é obrigatória.', 'error');
-            return;
-        }
-    
-        const playerCardsRef = db.collection('player_cards').doc(playerId).collection('cards').doc('active_game');
-        const userRef = db.collection('users').doc(playerId);
-        const adminLogRef = db.collection('admin_logs').doc();
-    
-        try {
-            await db.runTransaction(async (transaction) => {
-                const gameDoc = await transaction.get(gameDocRef);
-                const playerCardsDoc = await transaction.get(playerCardsRef);
-                const userDoc = await transaction.get(userRef);
-    
-                if (!gameDoc.exists || !playerCardsDoc.exists || !userDoc.exists) {
-                    throw new Error("Não foi possível encontrar todos os dados necessários.");
-                }
-    
-                const gameData = gameDoc.data() as GameState;
-                const playerCardsData = playerCardsDoc.data();
-                
-                if (!playerCardsData || !playerCardsData.cards || playerCardsData.cards.length === 0) {
-                    throw new Error("O jogador não tem cartelas para remover.");
-                }
-    
-                const updatedCards = [...playerCardsData.cards];
-                updatedCards.pop();
-    
-                transaction.update(playerCardsRef, { cards: updatedCards });
-                transaction.update(gameDocRef, {
-                    prizePool: increment(-9),
-                    [`players.${playerId}.cardCount`]: increment(-1),
-                });
-                transaction.update(userRef, { fichas: increment(10) });
-    
-                transaction.set(adminLogRef, {
-                    adminUid: user.uid,
-                    adminName: user.displayName,
-                    targetUid: playerId,
-                    targetName: gameData.players[playerId].displayName,
-                    action: 'remove_card',
-                    justification: justification,
-                    timestamp: serverTimestamp(),
-                });
-            });
-    
-            showNotification('Cartela removida e jogador reembolsado.', 'success');
-        } catch (error: any) {
-            console.error("Erro ao remover cartela:", error);
-            showNotification(error.message || 'Falha ao remover a cartela.', 'error');
+    const handleSendPasswordReset = async (email: string) => {
+        if (window.confirm(`Tem certeza que deseja enviar um e-mail de redefinição de senha para ${email}?`)) {
+            try {
+                await auth.sendPasswordResetEmail(email);
+                showNotification(`E-mail de redefinição enviado para ${email}.`, 'success');
+            } catch (error) {
+                showNotification('Falha ao enviar o e-mail.', 'error');
+                console.error(error);
+            }
         }
     };
     
@@ -1031,94 +1000,76 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                         </div>
                     </div>
                 );
-            case 'players':
-                return (
+            case 'users':
+                 return (
                     <div className="bg-gray-900 p-4 rounded-lg">
-                        <h3 className="text-xl font-semibold mb-4 text-center">Gerenciamento de Jogadores ({allOnlinePlayers.length})</h3>
-                        <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2">
-                            {allOnlinePlayers.length > 0 ? (
-                                allOnlinePlayers.map(player => (
-                                    <div key={player.uid} className="bg-gray-700 rounded-md transition-all duration-300">
-                                        <div className="flex items-center justify-between p-2 cursor-pointer hover:bg-gray-600" onClick={() => handleTogglePlayer(player.uid)}>
-                                            <div className="flex items-center gap-3">
-                                                <span className={`w-3 h-3 rounded-full flex-shrink-0 ${player.status === 'online' ? 'bg-green-500' : 'bg-red-500'}`} title={player.status}></span>
-                                                <div>
-                                                    <p className="font-semibold">{player.displayName}</p>
-                                                    <p className="text-sm text-gray-400">{player.cardCount} cartela(s)</p>
+                        <h3 className="text-xl font-semibold mb-4 text-center">Gerenciar Usuários</h3>
+                         <input
+                            type="text"
+                            placeholder="Buscar por nome de usuário..."
+                            value={userSearch}
+                            onChange={(e) => setUserSearch(e.target.value)}
+                            className="w-full p-2 mb-4 bg-gray-700 border border-gray-600 rounded-lg placeholder-gray-400"
+                        />
+                        <div className="space-y-2 min-h-[400px] max-h-[400px] overflow-y-auto pr-2">
+                            {isLoadingUsers ? (
+                                <p className="text-center text-gray-400">Carregando usuários...</p>
+                            ) : managedUsers.length > 0 ? (
+                                managedUsers.map(managedUser => (
+                                    <div key={managedUser.uid} className="bg-gray-700 p-2 rounded-md">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                                                <span className={`w-3 h-3 rounded-full flex-shrink-0 ${onlineStatus[managedUser.uid] ? 'bg-green-500' : 'bg-red-500'}`} title={onlineStatus[managedUser.uid] ? 'Online' : 'Offline'}></span>
+                                                <div className="flex-1 min-w-0">
+                                                    <p className="font-semibold truncate" title={managedUser.displayName}>{managedUser.displayName}</p>
+                                                    <p className="text-sm text-gray-400 truncate" title={managedUser.email}>{managedUser.email}</p>
+                                                    <p className="text-sm text-yellow-400">Fichas: {managedUser.fichas}</p>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-2">
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); handleAddFichas(player); }}
-                                                    className="py-1 px-3 bg-green-600 hover:bg-green-700 rounded-lg text-sm font-semibold flex items-center gap-1"
-                                                >
-                                                    <CoinIcon className="w-4 h-4" /> Add Fichas
-                                                </button>
-                                                <button
-                                                    onClick={(e) => { e.stopPropagation(); handleRemoveCard(player.uid); }}
-                                                    disabled={!player.cardCount || player.cardCount === 0 || gameState?.status !== 'waiting'}
-                                                    className="py-1 px-3 bg-red-600 hover:bg-red-700 rounded-lg text-sm font-semibold disabled:bg-gray-500 disabled:cursor-not-allowed"
-                                                >
-                                                    Remover
-                                                </button>
-                                                <span className={`transform transition-transform text-gray-400 ${expandedPlayerId === player.uid ? 'rotate-180' : 'rotate-0'}`}>▼</span>
+                                            <div className="flex items-center gap-2 flex-shrink-0">
+                                                <button onClick={() => handleEditUserFichas(managedUser)} className="p-2 bg-blue-600 hover:bg-blue-700 rounded-lg" title="Editar Fichas"><EditIcon className="w-4 h-4" /></button>
+                                                <button onClick={() => handleSendPasswordReset(managedUser.email)} className="p-2 bg-yellow-600 hover:bg-yellow-700 rounded-lg" title="Resetar Senha"><KeyIcon className="w-4 h-4" /></button>
+                                                <button onClick={() => handleTogglePlayer(managedUser.uid)} className="p-2 bg-purple-600 hover:bg-purple-700 rounded-lg" title="Ver Cartelas"><EyeIcon className="w-4 h-4" /></button>
                                             </div>
                                         </div>
-                                        {expandedPlayerId === player.uid && (
-                                            <div className="p-4 border-t border-gray-600 bg-gray-800">
+                                         {expandedPlayerId === managedUser.uid && (
+                                            <div className="p-2 mt-2 border-t border-gray-600 bg-gray-800">
+                                                <h4 className="font-semibold text-center mb-2">Cartelas Ativas</h4>
                                                 {isLoadingCards && <p className="text-sm text-center text-gray-400">Carregando...</p>}
-                                                {!isLoadingCards && playerCardDetails[player.uid] && playerCardDetails[player.uid].length > 0 ? (() => {
-                                                    const drawnNumbersSet = new Set(gameState?.drawnNumbers || []);
-                                                    return (
-                                                        <div className="space-y-4 max-h-64 overflow-y-auto pr-2">
-                                                            {playerCardDetails[player.uid].map((card, index) => (
-                                                                <div key={card?.id || index} className="bg-gray-900 p-3 rounded-lg">
-                                                                    <div className="flex items-center justify-between mb-3">
-                                                                        <p className="text-base font-semibold text-purple-300">Cartela #{index + 1} <span className="text-xs text-gray-400 font-mono">(ID: {card?.id?.substring(0, 8) || 'Inválido'})</span></p>
-                                                                         <button
-                                                                            onClick={() => setSelectedCardModal({ card: card, ownerId: player.uid, ownerName: player.displayName })}
-                                                                            className="p-1 text-gray-400 hover:text-white transition-colors"
-                                                                            aria-label="Visualizar detalhes da cartela"
-                                                                        >
-                                                                            <EyeIcon className="w-5 h-5" />
-                                                                        </button>
-                                                                    </div>
-                                                                    <div className="grid grid-cols-5 gap-1.5 text-center text-base">
-                                                                        {card.numbers.map((num, idx) => {
-                                                                            const isDrawn = drawnNumbersSet.has(num);
-                                                                            const isCenter = num === 0;
-                                                                            
-                                                                            let cellClasses = 'p-2 rounded-md aspect-square flex items-center justify-center font-bold';
-    
-                                                                            if (isCenter) {
-                                                                                cellClasses += ' bg-yellow-500 text-black';
-                                                                            } else if (isDrawn) {
-                                                                                cellClasses += ' bg-green-500 text-white';
-                                                                            } else {
-                                                                                cellClasses += ' bg-gray-600 text-gray-300';
-                                                                            }
-                                                                            
-                                                                            return (
-                                                                                <div key={idx} className={cellClasses}>
-                                                                                    {isCenter ? '★' : num}
-                                                                                </div>
-                                                                            );
-                                                                        })}
-                                                                    </div>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    );
-                                                })() : (
-                                                    !isLoadingCards && <p className="text-sm text-center text-gray-500">Nenhuma cartela para exibir.</p>
+                                                {!isLoadingCards && playerCardDetails[managedUser.uid] && playerCardDetails[managedUser.uid].length > 0 ? (
+                                                    <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                                                        {playerCardDetails[managedUser.uid].map((card, index) => (
+                                                            <div key={card?.id || index} className="bg-gray-900 p-2 rounded-lg flex items-center justify-between">
+                                                                <p className="text-sm font-semibold text-purple-300">Cartela #{index + 1}</p>
+                                                                 <button
+                                                                    onClick={() => setSelectedCardModal({ card: card, ownerId: managedUser.uid, ownerName: managedUser.displayName })}
+                                                                    className="p-1 text-gray-400 hover:text-white transition-colors"
+                                                                    aria-label="Visualizar detalhes da cartela"
+                                                                >
+                                                                    <EyeIcon className="w-5 h-5" />
+                                                                </button>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    !isLoadingCards && <p className="text-sm text-center text-gray-500">Nenhuma cartela ativa.</p>
                                                 )}
                                             </div>
                                         )}
                                     </div>
                                 ))
                             ) : (
-                                <p className="text-center text-gray-400 italic">Nenhum jogador online.</p>
+                                <p className="text-center text-gray-400 italic">Nenhum usuário encontrado.</p>
                             )}
+                        </div>
+                         <div className="flex justify-between items-center mt-4">
+                            <button onClick={() => setUserPage(p => Math.max(1, p - 1))} disabled={userPage === 1 || isLoadingUsers} className="py-2 px-4 bg-gray-600 hover:bg-gray-500 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">
+                                Anterior
+                            </button>
+                            <span className="font-semibold">Página {userPage}</span>
+                            <button onClick={() => setUserPage(p => p + 1)} disabled={!hasMoreUsers || isLoadingUsers} className="py-2 px-4 bg-gray-600 hover:bg-gray-500 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed">
+                                Próxima
+                            </button>
                         </div>
                     </div>
                 );
@@ -1289,8 +1240,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                     <TabButton isActive={activeTab === 'overview'} onClick={() => setActiveTab('overview')}>
                         Visão Geral & Controles
                     </TabButton>
-                    <TabButton isActive={activeTab === 'players'} onClick={() => setActiveTab('players')}>
-                        Gerenciamento de Jogadores
+                    <TabButton isActive={activeTab === 'users'} onClick={() => setActiveTab('users')}>
+                        Gerenciar Usuários
                     </TabButton>
                     <TabButton isActive={activeTab === 'logs'} onClick={() => setActiveTab('logs')}>
                         Logs & Moderação
