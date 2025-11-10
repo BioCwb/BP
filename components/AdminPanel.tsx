@@ -9,6 +9,7 @@ import { BingoMasterBoard } from './BingoMasterBoard';
 import { calculateCardProgress } from '../utils/bingoUtils';
 import { EditIcon } from './icons/EditIcon';
 import { KeyIcon } from './icons/KeyIcon';
+import { ClipboardIcon } from './icons/ClipboardIcon';
 
 interface AdminPanelProps {
     user: firebase.User;
@@ -128,6 +129,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [onlineStatus, setOnlineStatus] = useState<{ [uid: string]: boolean }>({});
     const [pixHistory, setPixHistory] = useState<PixHistoryItem[]>([]);
     const [pixHistorySearch, setPixHistorySearch] = useState('');
+    const [winnerPaymentInfo, setWinnerPaymentInfo] = useState<any[]>([]);
 
     // State for the "Clear All Cards" confirmation modal
     const [isClearAllModalOpen, setIsClearAllModalOpen] = useState(false);
@@ -308,6 +310,34 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
         return () => clearInterval(gameLoop);
     }, [gameState, user.uid, gameDocRef, isTabVisible]);
 
+    useEffect(() => {
+        if (gameState?.status === 'ended' && gameState.winners && gameState.winners.length > 0) {
+            const fetchWinnerInfo = async () => {
+                const winnerInfoPromises = gameState.winners.map(async (winner) => {
+                    const userDocRef = db.collection('users').doc(winner.uid);
+                    const userDoc = await userDocRef.get();
+                    if (userDoc.exists) {
+                        const userData = userDoc.data();
+                        const prize = gameState.prizePool > 0 ? Math.floor(gameState.prizePool / gameState.winners.length) : 0;
+                        return {
+                            ...winner,
+                            prize,
+                            pixKey: userData?.pixKey || null,
+                            pixKeyType: userData?.pixKeyType || null,
+                            fullName: userData?.fullName || null,
+                        };
+                    }
+                    return null;
+                });
+                const info = (await Promise.all(winnerInfoPromises)).filter(Boolean);
+                setWinnerPaymentInfo(info);
+            };
+            fetchWinnerInfo();
+        } else {
+            setWinnerPaymentInfo([]);
+        }
+    }, [gameState?.status, gameState?.winners, gameState?.prizePool]);
+
     const fetchUsers = useCallback(async () => {
         if (activeTab !== 'users') return;
         setIsLoadingUsers(true);
@@ -422,6 +452,11 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
         );
     }, [pixHistory, pixHistorySearch]);
     
+    const handleCopyPixKey = (key: string) => {
+        navigator.clipboard.writeText(key);
+        showNotification('Chave Pix copiada para a área de transferência!', 'success');
+    };
+
     const handleDeleteChatMessage = async (message: ChatMessage) => {
         const adminUser = auth.currentUser;
         if (!adminUser) {
@@ -1059,6 +1094,43 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                 <button onClick={handleSaveSettings} className="mt-6 w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold">Salvar Configurações</button>
                             </div>
                         </div>
+
+                        {gameState?.status === 'ended' && winnerPaymentInfo.length > 0 && (
+                            <div className="mt-6 bg-yellow-900 bg-opacity-50 border-2 border-yellow-500 p-4 rounded-lg">
+                                <h3 className="text-xl font-semibold mb-4 text-center text-yellow-300">Informações para Pagamento do Prêmio</h3>
+                                <div className="space-y-4">
+                                    {winnerPaymentInfo.map(winner => (
+                                        <div key={winner.uid} className="bg-gray-900 p-3 rounded-md">
+                                            <div className="flex justify-between items-start">
+                                                <div>
+                                                    <p className="text-lg font-bold text-white">{winner.displayName}</p>
+                                                    <p className="text-sm text-yellow-400">Prêmio: {winner.prize} F</p>
+                                                </div>
+                                                {winner.pixKey ? (
+                                                    <div className="text-right text-sm">
+                                                        <p className="font-semibold">{winner.fullName}</p>
+                                                        <p className="text-gray-400">{winner.pixKeyType?.toUpperCase()}</p>
+                                                        <div className="flex items-center gap-2 mt-1">
+                                                            <p className="font-mono bg-gray-700 px-2 py-1 rounded">{winner.pixKey}</p>
+                                                            <button
+                                                                onClick={() => handleCopyPixKey(winner.pixKey)}
+                                                                className="p-1.5 bg-purple-600 hover:bg-purple-700 rounded-md"
+                                                                title="Copiar Chave Pix"
+                                                            >
+                                                                <ClipboardIcon className="w-4 h-4" />
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <p className="text-red-400 text-sm font-semibold">Chave Pix não cadastrada.</p>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
                         <div className="mt-6 bg-gray-900 p-4 rounded-lg">
                             <BingoMasterBoard drawnNumbers={gameState?.drawnNumbers || []} />
                         </div>
