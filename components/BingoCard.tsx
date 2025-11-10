@@ -71,7 +71,7 @@ export const BingoCard: React.FC<BingoCardProps> = ({ numbers, drawnNumbers, gam
                         cellClasses += ' bg-yellow-500 text-black border-yellow-300';
                     } else if (isMarked) {
                         // Player has marked this number (which must be a drawn number)
-                        cellClasses += ' bg-purple-600 text-white border-purple-400 scale-105 shadow-lg marked-animation';
+                        cellClasses += ' bg-violet-500 text-white border-violet-400 scale-105 shadow-lg marked-animation';
                     } else if (isDrawn) {
                         // The number is drawn but the player hasn't marked it yet. Add a green border to indicate it's available.
                         cellClasses += ' bg-gray-700 text-gray-300 border-green-500';
