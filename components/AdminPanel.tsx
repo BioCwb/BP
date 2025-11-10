@@ -50,6 +50,9 @@ interface ManagedUser {
     displayName: string;
     email: string;
     fichas: number;
+    pixKeyType?: string;
+    pixKey?: string;
+    fullName?: string;
 }
 
 interface PixConfig {
@@ -1090,32 +1093,46 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                             <div className="flex items-center gap-2 flex-shrink-0">
                                                 <button onClick={() => handleEditUserFichas(managedUser)} className="p-2 bg-blue-600 hover:bg-blue-700 rounded-lg" title="Editar Fichas"><EditIcon className="w-4 h-4" /></button>
                                                 <button onClick={() => handleSendPasswordReset(managedUser.email)} className="p-2 bg-yellow-600 hover:bg-yellow-700 rounded-lg" title="Resetar Senha"><KeyIcon className="w-4 h-4" /></button>
-                                                <button onClick={() => handleTogglePlayer(managedUser.uid)} className="p-2 bg-purple-600 hover:bg-purple-700 rounded-lg" title="Ver Cartelas"><EyeIcon className="w-4 h-4" /></button>
+                                                <button onClick={() => handleTogglePlayer(managedUser.uid)} className="p-2 bg-purple-600 hover:bg-purple-700 rounded-lg" title="Ver Detalhes"><EyeIcon className="w-4 h-4" /></button>
                                             </div>
                                         </div>
                                          {expandedPlayerId === managedUser.uid && (
-                                            <div className="p-2 mt-2 border-t border-gray-600 bg-gray-800">
-                                                <h4 className="font-semibold text-center mb-2">Cartelas Ativas</h4>
-                                                {isLoadingCards && <p className="text-sm text-center text-gray-400">Carregando...</p>}
-                                                {!isLoadingCards && playerCardDetails[managedUser.uid] && playerCardDetails[managedUser.uid].length > 0 ? (
-                                                    <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
-                                                        {playerCardDetails[managedUser.uid].map((card, index) => (
-                                                            <div key={card?.id || index} className="bg-gray-900 p-2 rounded-lg flex items-center justify-between">
-                                                                <p className="text-sm font-semibold text-purple-300">Cartela #{index + 1}</p>
-                                                                 <button
-                                                                    onClick={() => setSelectedCardModal({ card: card, ownerId: managedUser.uid, ownerName: managedUser.displayName })}
-                                                                    className="p-1 text-gray-400 hover:text-white transition-colors"
-                                                                    aria-label="Visualizar detalhes da cartela"
-                                                                >
-                                                                    <EyeIcon className="w-5 h-5" />
-                                                                </button>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                ) : (
-                                                    !isLoadingCards && <p className="text-sm text-center text-gray-500">Nenhuma cartela ativa.</p>
-                                                )}
-                                            </div>
+                                            <>
+                                                <div className="p-2 mt-2 border-t border-gray-600 bg-gray-800">
+                                                    <h4 className="font-semibold text-center mb-2">Cartelas Ativas</h4>
+                                                    {isLoadingCards && <p className="text-sm text-center text-gray-400">Carregando...</p>}
+                                                    {!isLoadingCards && playerCardDetails[managedUser.uid] && playerCardDetails[managedUser.uid].length > 0 ? (
+                                                        <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                                                            {playerCardDetails[managedUser.uid].map((card, index) => (
+                                                                <div key={card?.id || index} className="bg-gray-900 p-2 rounded-lg flex items-center justify-between">
+                                                                    <p className="text-sm font-semibold text-purple-300">Cartela #{index + 1}</p>
+                                                                    <button
+                                                                        onClick={() => setSelectedCardModal({ card: card, ownerId: managedUser.uid, ownerName: managedUser.displayName })}
+                                                                        className="p-1 text-gray-400 hover:text-white transition-colors"
+                                                                        aria-label="Visualizar detalhes da cartela"
+                                                                    >
+                                                                        <EyeIcon className="w-5 h-5" />
+                                                                    </button>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        !isLoadingCards && <p className="text-sm text-center text-gray-500">Nenhuma cartela ativa.</p>
+                                                    )}
+                                                </div>
+                                                <div className="p-2 mt-2 border-t border-gray-600 bg-gray-800">
+                                                    <h4 className="font-semibold text-center mb-2">Informações de Premiação (PIX)</h4>
+                                                    {managedUser.pixKey ? (
+                                                        <div className="text-sm space-y-1 text-left px-2">
+                                                            <p><strong className="text-gray-400">Nome Completo:</strong> {managedUser.fullName}</p>
+                                                            <p><strong className="text-gray-400">Tipo da Chave:</strong> {managedUser.pixKeyType?.toUpperCase()}</p>
+                                                            <p><strong className="text-gray-400">Chave PIX:</strong> {managedUser.pixKey}</p>
+                                                        </div>
+                                                    ) : (
+                                                        <p className="text-sm text-center text-gray-500">Nenhuma informação de PIX cadastrada.</p>
+                                                    )}
+                                                </div>
+                                            </>
                                         )}
                                     </div>
                                 ))

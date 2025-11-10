@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { auth, EmailAuthProvider } from '../firebase/config';
+import { auth, EmailAuthProvider, db } from '../firebase/config';
 // FIX: Removed v9 modular auth imports to switch to v8 compat syntax.
 import type firebase from 'firebase/compat/app';
 import { InputField } from './InputField';
@@ -10,6 +10,7 @@ import { type UserData } from '../App';
 import { PlayIcon } from './icons/PlayIcon';
 import { TicketIcon } from './icons/TicketIcon';
 import { TrophyIcon } from './icons/TrophyIcon';
+import { KeyIcon } from './icons/KeyIcon';
 
 
 interface ProfileManagementProps {
@@ -25,6 +26,10 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, user
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
+
+  const [pixKeyType, setPixKeyType] = useState(userData.pixKeyType || 'cpf');
+  const [pixKey, setPixKey] = useState(userData.pixKey || '');
+  const [fullName, setFullName] = useState(userData.fullName || '');
 
   const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -82,6 +87,23 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, user
         showNotification('Falha ao alterar a senha. Por favor, tente novamente.', 'error');
         console.error(err);
       }
+    }
+  };
+
+  const handlePixInfoUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!auth.currentUser) return;
+
+    try {
+        const userDocRef = db.collection('users').doc(auth.currentUser.uid);
+        await userDocRef.update({
+            pixKeyType,
+            pixKey,
+            fullName
+        });
+        showNotification('Informações de premiação salvas!', 'success');
+    } catch (err) {
+        showNotification('Falha ao salvar as informações de premiação.', 'error');
     }
   };
   
@@ -172,6 +194,57 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, user
             O gerenciamento de senha não está disponível para contas conectadas com o Google.
         </div>
       )}
+
+      <div className="border-t border-gray-700 pt-6 mt-6">
+        <form onSubmit={handlePixInfoUpdate} className="space-y-4">
+            <h3 className="text-xl font-semibold text-white text-center">Informações para Premiação (PIX)</h3>
+            <p className="text-sm text-center text-gray-400 mb-4">
+                Esses dados são confidenciais e serão usados apenas para o pagamento de prêmios.
+            </p>
+            <div>
+                <label htmlFor="pix-key-type" className="block text-sm font-medium text-gray-300 mb-1">
+                    Tipo de Chave Pix
+                </label>
+                <select
+                    id="pix-key-type"
+                    value={pixKeyType}
+                    onChange={(e) => setPixKeyType(e.target.value)}
+                    className="w-full py-2.5 pl-4 pr-10 bg-gray-700 bg-opacity-50 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition duration-300"
+                >
+                    <option value="cpf">CPF</option>
+                    <option value="cnpj">CNPJ</option>
+                    <option value="celular">Celular</option>
+                    <option value="email">E-mail</option>
+                    <option value="aleatoria">Aleatória</option>
+                </select>
+            </div>
+            <InputField
+                id="pix-key"
+                label="Chave Pix"
+                type="text"
+                value={pixKey}
+                onChange={(e) => setPixKey(e.target.value)}
+                placeholder="Digite sua chave Pix"
+                icon={<KeyIcon className="w-5 h-5 text-gray-400" />}
+            />
+            <InputField
+                id="full-name"
+                label="Nome Completo do Titular"
+                type="text"
+                value={fullName}
+                onChange={(e) => setFullName(e.target.value)}
+                placeholder="Nome completo como no banco"
+                icon={<UserIcon className="w-5 h-5 text-gray-400" />}
+            />
+            <button
+                type="submit"
+                className="w-full py-2.5 px-4 bg-green-600 hover:bg-green-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50"
+            >
+                Salvar Informações de Premiação
+            </button>
+        </form>
+      </div>
+
     </div>
   );
 };
