@@ -183,6 +183,31 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
             const announcement = gameState.winners.length ? `Último(s) vencedor(es): ${gameState.winners.map(w => w.displayName).join(', ')}` : "Jogo resetado automaticamente.";
             const batch = db.batch();
 
+            const playerIds = Object.keys(gameState.players || {});
+            const winners = gameState.winners || [];
+
+            // Update stats for all participants
+            if (playerIds.length > 0) {
+                for (const uid of playerIds) {
+                    const userRef = db.collection('users').doc(uid);
+                    batch.update(userRef, { gamesPlayed: increment(1) });
+                }
+            }
+
+            // Distribute prizes to winners
+            if (winners.length > 0 && gameState.prizePool > 0) {
+                const prizePerWinner = Math.floor(gameState.prizePool / winners.length);
+                if (prizePerWinner > 0) {
+                    for (const winner of winners) {
+                        const winnerRef = db.collection('users').doc(winner.uid);
+                        batch.update(winnerRef, {
+                            fichas: increment(prizePerWinner),
+                            totalWinnings: increment(prizePerWinner)
+                        });
+                    }
+                }
+            }
+
             // 1. Save game to history
             const historyRef = db.collection('game_history').doc();
             batch.set(historyRef, {
@@ -193,7 +218,6 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
             });
             
             // 2. Delete all active cards from participating players
-            const playerIds = Object.keys(gameState.players || {});
             for (const uid of playerIds) {
                 const playerCardsRef = db.collection('player_cards').doc(uid).collection('cards').doc('active_game');
                 batch.delete(playerCardsRef);

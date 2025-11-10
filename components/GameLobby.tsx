@@ -231,7 +231,10 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
             };
 
             // Queue up all transaction writes
-            transaction.update(userDocRef, { fichas: increment(-10) });
+            transaction.update(userDocRef, {
+                fichas: increment(-10),
+                cardsPurchased: increment(1)
+            });
 
             transaction.update(gameDocRef, {
                 prizePool: increment(9), // 9 F goes to prize pool, 1 F is house cut

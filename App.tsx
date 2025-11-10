@@ -25,6 +25,9 @@ export interface UserData {
   email: string;
   fichas: number;
   lastBonusClaimedAt?: firebase.firestore.Timestamp;
+  gamesPlayed: number;
+  cardsPurchased: number;
+  totalWinnings: number;
 }
 
 // FIX: Moved TabButton component outside of the App component to prevent re-definition on each render
@@ -92,7 +95,10 @@ export default function App() {
              const newUserData: UserData = {
                 displayName: user.displayName || 'BingoPlayer',
                 email: user.email!,
-                fichas: 100 // Welcome bonus
+                fichas: 100, // Welcome bonus
+                gamesPlayed: 0,
+                cardsPurchased: 0,
+                totalWinnings: 0,
             };
             // FIX: Switched from v9 setDoc(...) to v8 userDocRef.set(...)
             await userDocRef.set(newUserData);
@@ -207,7 +213,10 @@ export default function App() {
         const newUserData: UserData = {
           displayName: registerUsername,
           email: registerEmail,
-          fichas: 100 // Welcome bonus
+          fichas: 100, // Welcome bonus
+          gamesPlayed: 0,
+          cardsPurchased: 0,
+          totalWinnings: 0,
         };
         // FIX: Switched from v9 setDoc(doc(db,...),...) to v8 db.collection(...).doc(...).set(...)
         await db.collection("users").doc(user.uid).set(newUserData);
@@ -330,7 +339,7 @@ export default function App() {
         case 'spectator':
             return <BingoGame user={currentUser!} userData={userData!} onBackToLobby={() => setViewMode('lobby')} onSessionReset={handleLogout} isSpectator={true} />;
         case 'profile':
-            return <ProfileManagement user={currentUser!} onBack={() => setViewMode('lobby')} />;
+            return <ProfileManagement user={currentUser!} userData={userData!} onBack={() => setViewMode('lobby')} />;
         case 'admin':
             return <AdminPanel user={currentUser!} onBack={() => setViewMode('lobby')} />;
         case 'auth':

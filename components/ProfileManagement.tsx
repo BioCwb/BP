@@ -6,13 +6,19 @@ import { InputField } from './InputField';
 import { UserIcon } from './icons/UserIcon';
 import { LockIcon } from './icons/LockIcon';
 import { useNotification } from '../context/NotificationContext';
+import { type UserData } from '../App';
+import { PlayIcon } from './icons/PlayIcon';
+import { TicketIcon } from './icons/TicketIcon';
+import { TrophyIcon } from './icons/TrophyIcon';
+
 
 interface ProfileManagementProps {
   user: firebase.User;
+  userData: UserData;
   onBack: () => void;
 }
 
-export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, onBack }) => {
+export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, userData, onBack }) => {
   const [displayName, setDisplayName] = useState(user.displayName || '');
   const { showNotification } = useNotification();
   
@@ -86,6 +92,24 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, onBa
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-3xl font-bold text-white">Gerenciar Perfil</h2>
         <button onClick={onBack} className="text-gray-300 hover:text-white">&larr; Voltar para o Lobby</button>
+      </div>
+
+      <div className="border-b border-gray-700 pb-6 mb-6">
+        <h3 className="text-xl font-semibold text-white text-center mb-4">Estatísticas do Jogador</h3>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between text-lg">
+            <span className="flex items-center text-gray-300"><PlayIcon className="w-5 h-5 mr-2 text-purple-400" /> Partidas Jogadas:</span>
+            <span className="font-bold text-white">{userData.gamesPlayed ?? 0}</span>
+          </div>
+          <div className="flex items-center justify-between text-lg">
+            <span className="flex items-center text-gray-300"><TicketIcon className="w-5 h-5 mr-2 text-green-400" /> Cartelas Compradas:</span>
+            <span className="font-bold text-white">{userData.cardsPurchased ?? 0}</span>
+          </div>
+          <div className="flex items-center justify-between text-lg">
+            <span className="flex items-center text-gray-300"><TrophyIcon className="w-5 h-5 mr-2 text-yellow-400" /> Fichas Ganhas (Total):</span>
+            <span className="font-bold text-white">{userData.totalWinnings ?? 0}</span>
+          </div>
+        </div>
       </div>
 
       <form onSubmit={handleProfileUpdate} className="space-y-4 border-b border-gray-700 pb-6 mb-6">
