@@ -62,10 +62,19 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
     const [showGameStartedMessage, setShowGameStartedMessage] = useState(false);
     const prevStatusRef = useRef<GameState['status'] | undefined>();
     const isGameLoopRunning = useRef(false);
+    const [isTabVisible, setIsTabVisible] = useState(() => document.visibilityState === 'visible');
 
 
     const gameDocRef = useMemo(() => db.collection('games').doc('active_game'), []);
     const myCardsCollectionRef = useMemo(() => db.collection('player_cards').doc(user.uid).collection('cards').doc('active_game'), [user.uid]);
+
+    useEffect(() => {
+        const handleVisibilityChange = () => setIsTabVisible(document.visibilityState === 'visible');
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, []);
 
     useEffect(() => {
         let isMounted = true;
@@ -272,7 +281,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
 
     // Main game loop - ONLY RUNS FOR THE HOST
     useEffect(() => {
-        if (!gameState || gameState.host !== user.uid || gameState.status !== 'running') {
+        if (!gameState || gameState.host !== user.uid || gameState.status !== 'running' || !isTabVisible) {
             isGameLoopRunning.current = false; // Ensure the loop flag is reset if conditions are not met
             return;
         }
@@ -368,7 +377,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
         }, 1000); // Ticks every second
     
         return () => clearInterval(gameLoop);
-    }, [gameState, user.uid, gameDocRef]);
+    }, [gameState, user.uid, gameDocRef, isTabVisible]);
 
     const handleAdminStartGame = async () => {
         if (user.uid !== ADMIN_UID || !gameState || gameState.status !== 'waiting') return;

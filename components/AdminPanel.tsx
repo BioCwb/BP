@@ -91,6 +91,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [selectedCardModal, setSelectedCardModal] = useState<BingoCardData | null>(null);
     const [activeTab, setActiveTab] = useState<AdminTab>('overview');
     const isGameLoopRunning = useRef(false);
+    const [isTabVisible, setIsTabVisible] = useState(() => document.visibilityState === 'visible');
 
     // State for the "Clear All Cards" confirmation modal
     const [isClearAllModalOpen, setIsClearAllModalOpen] = useState(false);
@@ -103,6 +104,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const purchaseHistoryCollectionRef = useMemo(() => db.collection('purchase_history'), []);
     const chatCollectionRef = useMemo(() => db.collection('chat'), []);
     const adminLogsCollectionRef = useMemo(() => db.collection('admin_logs'), []);
+
+    useEffect(() => {
+        const handleVisibilityChange = () => setIsTabVisible(document.visibilityState === 'visible');
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, []);
 
     useEffect(() => {
         const unsubscribe = gameDocRef.onSnapshot((doc) => {
@@ -142,7 +151,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     
     // Game loop logic, allowing the Admin Panel to act as the host
     useEffect(() => {
-        if (!gameState || gameState.host !== user.uid || gameState.status !== 'running') {
+        if (!gameState || gameState.host !== user.uid || gameState.status !== 'running' || !isTabVisible) {
             isGameLoopRunning.current = false;
             return;
         }
@@ -235,7 +244,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
         }, 1000);
     
         return () => clearInterval(gameLoop);
-    }, [gameState, user.uid, gameDocRef]);
+    }, [gameState, user.uid, gameDocRef, isTabVisible]);
 
     useEffect(() => {
         const statusCollectionRef = db.collection('player_status');
