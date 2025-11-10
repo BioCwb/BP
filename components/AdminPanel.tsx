@@ -392,65 +392,67 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     }, [gameState?.players]);
 
     const handleForceStart = async () => {
-        if (!gameState) return;
-    
-        const isGameInProgress = gameState.status !== 'waiting';
-    
-        if (isGameInProgress && !window.confirm("Esta ação irá resetar a partida atual e iniciar uma nova rodada imediatamente. Deseja continuar?")) {
+        const confirmMessage = gameState?.status !== 'waiting' 
+            ? "Esta ação irá resetar a partida atual e iniciar uma nova rodada imediatamente. Deseja continuar?"
+            : "Tem certeza de que deseja forçar o início de uma nova partida?";
+
+        if (!window.confirm(confirmMessage)) {
             return;
         }
-    
+
         try {
-            const batch = db.batch();
-    
-            // Part 1: Cleanup from the previous game, if it was in progress.
-            if (isGameInProgress) {
-                const playerIds = Object.keys(gameState.players || {});
-                if (playerIds.length > 0) {
-                     // Save current game state to history
-                    const historyRef = db.collection('game_history').doc();
-                    batch.set(historyRef, {
-                        winners: gameState.winners || [],
-                        drawnNumbers: gameState.drawnNumbers || [],
-                        prizePool: gameState.prizePool || 0,
-                        completedAt: serverTimestamp()
-                    });
-                    // Delete all players' active cards for the current game
-                    for (const uid of playerIds) {
-                        const playerCardsRef = db.collection('player_cards').doc(uid).collection('cards').doc('active_game');
-                        batch.delete(playerCardsRef);
+            await db.runTransaction(async (transaction) => {
+                const gameDoc = await transaction.get(gameDocRef);
+                if (!gameDoc.exists) {
+                    throw new Error("O estado do jogo não foi encontrado.");
+                }
+                const currentGameState = gameDoc.data() as GameState;
+
+                if (currentGameState.status !== 'waiting') {
+                    const playerIds = Object.keys(currentGameState.players || {});
+                    if (playerIds.length > 0) {
+                        const historyRef = db.collection('game_history').doc();
+                        transaction.set(historyRef, {
+                            winners: currentGameState.winners || [],
+                            drawnNumbers: currentGameState.drawnNumbers || [],
+                            prizePool: currentGameState.prizePool || 0,
+                            completedAt: serverTimestamp(),
+                            roundId: currentGameState.roundId || 'unknown'
+                        });
+
+                        for (const uid of playerIds) {
+                            const playerCardsRef = db.collection('player_cards').doc(uid).collection('cards').doc('active_game');
+                            transaction.delete(playerCardsRef);
+                        }
                     }
                 }
-            }
-    
-            // Part 2: Reset the game state and immediately start a new round.
-            const newRoundId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-            batch.update(gameDocRef, {
-                status: 'running', // Start the game immediately
-                drawnNumbers: [],
-                prizePool: 0,
-                winners: [],
-                countdown: gameState.drawIntervalDuration || 5,
-                lastWinnerAnnouncement: "Nova partida iniciada pelo administrador.",
-                players: {},
-                pauseReason: '',
-                roundId: newRoundId,
+
+                const newRoundId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+                transaction.update(gameDocRef, {
+                    status: 'running',
+                    drawnNumbers: [],
+                    prizePool: 0,
+                    winners: [],
+                    countdown: currentGameState.drawIntervalDuration || 5,
+                    lastWinnerAnnouncement: "Nova partida iniciada pelo administrador.",
+                    players: {},
+                    pauseReason: '',
+                    roundId: newRoundId,
+                });
+
+                const adminLogRef = db.collection('admin_logs').doc();
+                transaction.set(adminLogRef, {
+                    adminUid: user.uid,
+                    adminName: user.displayName,
+                    action: 'force_start_game_override',
+                    timestamp: serverTimestamp(),
+                });
             });
-    
-            // Part 3: Log the admin action.
-            const adminLogRef = db.collection('admin_logs').doc();
-            batch.set(adminLogRef, {
-                adminUid: user.uid,
-                adminName: user.displayName,
-                action: 'force_start_game_override',
-                timestamp: serverTimestamp(),
-            });
-    
-            await batch.commit();
+
             showNotification('Nova rodada iniciada com sucesso!', 'success');
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error during force start:", error);
-            showNotification('Falha ao forçar o início do jogo.', 'error');
+            showNotification(error.message || 'Falha ao forçar o início do jogo.', 'error');
         }
     };
     
