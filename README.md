@@ -1,6 +1,6 @@
 # Noite do Bingo
 
-**Versão Atual: 1.0.10**
+**Versão Atual: 1.0.11**
 
 Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real construído com React, TypeScript e Firebase. Este projeto oferece uma experiência de jogo completa com autenticação de usuários, um lobby interativo, jogabilidade em tempo real e um painel de administração robusto para gerenciamento total da partida.
 
@@ -24,6 +24,7 @@ Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real cons
 ### Para Administradores
 - **Painel de Administração:** Uma interface exclusiva para o administrador monitorar e controlar o jogo.
 - **Monitoramento em Tempo Real:** Visualize o status do jogo, o número de jogadores, a quantidade de bolas sorteadas e o prêmio acumulado.
+- **Visualização de Números Sorteados:** Acompanhe os números sorteados em tempo real diretamente na aba de visão geral do painel.
 - **Controles Manuais do Jogo:**
   - **Forçar Início Flexível:** Inicie uma nova partida instantaneamente. Se o jogo estiver aguardando jogadores, ele apenas iniciará a contagem, mantendo as cartelas compradas. Se um jogo já estiver em andamento, esta ação irá resetá-lo e começar uma nova rodada imediatamente.
   - **Início Rápido na Tela de Jogo:** Inicie a partida diretamente da tela de jogo através de um botão exclusivo para administradores, visível quando o jogo está aguardando para começar.
@@ -58,7 +59,7 @@ O objetivo é ser o primeiro jogador a completar uma cartela inteira (todos os 2
 1.  **Crie uma Conta e Faça Login:** Use seu e-mail ou conta Google para acessar o jogo. Novos jogadores recebem um bônus de 100 Fichas (F).
 2.  **Acesse o Lobby:** Após o login, você estará no lobby. Aqui você pode conversar com outros jogadores e ver seu saldo de fichas.
 3.  **Compre Suas Cartelas:** Antes de a partida começar, clique no botão "Comprar Cartela (10 F)". Cada cartela custa 10 Fichas. Você pode comprar até 10 cartelas por rodada. As cartelas são válidas para uma única partida; você precisará comprar novas cartelas para cada nova rodada.
-4.  **Aguarde o Início:** O jogo não começa automaticamente. O administrador iniciará a partida manualmente assim que houver no mínimo **2 jogadores com cartelas compradas**.
+4.  **Aguarde o Início:** O jogo não começa automaticamente. O administrador iniciará a partida manually assim que houver no mínimo **2 jogadores com cartelas compradas**.
 5.  **Acompanhe e Marque:** Os números sorteados recebem um destaque especial na borda. Para uma experiência mais interativa, você pode clicar nesses números para marcá-los com uma animação, ajudando a visualizar seu progresso!
 6.  **Vitória Automática:** O primeiro jogador a ter todos os 24 números de uma cartela sorteados vence o jogo. O sistema detecta a vitória instantaneamente e encerra a partida, então não é preciso se preocupar em clicar em "BINGO!", apenas torça e acompanhe suas cartelas!
 7.  **Retorno ao Lobby:** Após a exibição dos vencedores, todos os jogadores retornam automaticamente ao lobby para se prepararem para a próxima rodada.

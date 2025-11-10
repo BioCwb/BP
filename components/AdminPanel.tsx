@@ -5,6 +5,7 @@ import type { GameState } from './BingoGame';
 import { TrashIcon } from './icons/TrashIcon';
 import { EyeIcon } from './icons/EyeIcon';
 import { useNotification } from '../context/NotificationContext';
+import { BingoMasterBoard } from './BingoMasterBoard';
 
 interface AdminPanelProps {
     user: firebase.User;
@@ -87,7 +88,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [chatSearch, setChatSearch] = useState('');
     const [adminLogSearch, setAdminLogSearch] = useState('');
     const [selectedCardModal, setSelectedCardModal] = useState<BingoCardData | null>(null);
-    const [activeTab, setActiveTab] = useState<AdminTab>('players');
+    const [activeTab, setActiveTab] = useState<AdminTab>('overview');
 
     // State for the "Clear All Cards" confirmation modal
     const [isClearAllModalOpen, setIsClearAllModalOpen] = useState(false);
@@ -681,53 +682,58 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
         switch (activeTab) {
             case 'overview':
                 return (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {/* Game Controls */}
-                        <div className="bg-gray-900 p-4 rounded-lg">
-                             <h3 className="text-xl font-semibold mb-4 text-center">Controles do Jogo</h3>
-                             <div className="space-y-2">
-                                <div className="flex gap-2">
-                                    <button onClick={handleForceStart} className="flex-1 py-2 px-4 bg-green-600 hover:bg-green-700 rounded-lg font-semibold">Forçar Início</button>
-                                    {(gameState?.status === 'running' || gameState?.status === 'paused') && (
-                                        <button 
-                                            onClick={handleTogglePause}
-                                            className={`flex-1 py-2 px-4 rounded-lg font-semibold transition-all ${
-                                                gameState.status === 'running'
-                                                ? 'bg-yellow-500 hover:bg-yellow-600 text-black'
-                                                : 'bg-blue-500 hover:bg-blue-600 text-white'
-                                            }`}
-                                        >
-                                            {gameState.status === 'running' ? 'Pausar Jogo' : 'Retomar Jogo'}
+                    <div>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* Game Controls */}
+                            <div className="bg-gray-900 p-4 rounded-lg">
+                                 <h3 className="text-xl font-semibold mb-4 text-center">Controles do Jogo</h3>
+                                 <div className="space-y-2">
+                                    <div className="flex gap-2">
+                                        <button onClick={handleForceStart} className="flex-1 py-2 px-4 bg-green-600 hover:bg-green-700 rounded-lg font-semibold">Forçar Início</button>
+                                        {(gameState?.status === 'running' || gameState?.status === 'paused') && (
+                                            <button 
+                                                onClick={handleTogglePause}
+                                                className={`flex-1 py-2 px-4 rounded-lg font-semibold transition-all ${
+                                                    gameState.status === 'running'
+                                                    ? 'bg-yellow-500 hover:bg-yellow-600 text-black'
+                                                    : 'bg-blue-500 hover:bg-blue-600 text-white'
+                                                }`}
+                                            >
+                                                {gameState.status === 'running' ? 'Pausar Jogo' : 'Retomar Jogo'}
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={handleResetGame} className="flex-1 py-2 px-4 bg-red-600 hover:bg-red-700 rounded-lg font-semibold">Resetar Jogo</button>
+                                        <button onClick={handleClearAllCardsClick} disabled={gameState?.status !== 'waiting' || totalPlayers === 0} className="flex-1 py-2 px-4 bg-orange-600 hover:bg-orange-700 rounded-lg font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed">
+                                            Limpar Todas as Cartelas
                                         </button>
-                                    )}
-                                </div>
-                                <div className="flex gap-2">
-                                    <button onClick={handleResetGame} className="flex-1 py-2 px-4 bg-red-600 hover:bg-red-700 rounded-lg font-semibold">Resetar Jogo</button>
-                                    <button onClick={handleClearAllCardsClick} disabled={gameState?.status !== 'waiting' || totalPlayers === 0} className="flex-1 py-2 px-4 bg-orange-600 hover:bg-orange-700 rounded-lg font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed">
-                                        Limpar Todas as Cartelas
-                                    </button>
-                                </div>
-                             </div>
-                        </div>
-
-                        {/* Time Settings */}
-                        <div className="bg-gray-900 p-4 rounded-lg">
-                            <h3 className="text-xl font-semibold mb-4 text-center">Configurações de Tempo (segundos)</h3>
-                            <div className="space-y-4">
-                                <div className="flex items-center justify-between">
-                                    <label htmlFor="lobby-time">Tempo de Espera no Lobby:</label>
-                                    <input id="lobby-time" type="number" value={lobbyTime} onChange={e => setLobbyTime(Number(e.target.value))} className="w-24 p-2 bg-gray-700 border border-gray-600 rounded-lg text-center" />
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <label htmlFor="draw-time">Intervalo entre Sorteios:</label>
-                                    <input id="draw-time" type="number" value={drawTime} onChange={e => setDrawTime(Number(e.target.value))} className="w-24 p-2 bg-gray-700 border border-gray-600 rounded-lg text-center" />
-                                </div>
-                                <div className="flex items-center justify-between">
-                                    <label htmlFor="end-time">Intervalo Pós-Jogo:</label>
-                                    <input id="end-time" type="number" value={endTime} onChange={e => setEndTime(Number(e.target.value))} className="w-24 p-2 bg-gray-700 border border-gray-600 rounded-lg text-center" />
-                                </div>
+                                    </div>
+                                 </div>
                             </div>
-                            <button onClick={handleSaveSettings} className="mt-6 w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold">Salvar Configurações</button>
+
+                            {/* Time Settings */}
+                            <div className="bg-gray-900 p-4 rounded-lg">
+                                <h3 className="text-xl font-semibold mb-4 text-center">Configurações de Tempo (segundos)</h3>
+                                <div className="space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <label htmlFor="lobby-time">Tempo de Espera no Lobby:</label>
+                                        <input id="lobby-time" type="number" value={lobbyTime} onChange={e => setLobbyTime(Number(e.target.value))} className="w-24 p-2 bg-gray-700 border border-gray-600 rounded-lg text-center" />
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <label htmlFor="draw-time">Intervalo entre Sorteios:</label>
+                                        <input id="draw-time" type="number" value={drawTime} onChange={e => setDrawTime(Number(e.target.value))} className="w-24 p-2 bg-gray-700 border border-gray-600 rounded-lg text-center" />
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <label htmlFor="end-time">Intervalo Pós-Jogo:</label>
+                                        <input id="end-time" type="number" value={endTime} onChange={e => setEndTime(Number(e.target.value))} className="w-24 p-2 bg-gray-700 border border-gray-600 rounded-lg text-center" />
+                                    </div>
+                                </div>
+                                <button onClick={handleSaveSettings} className="mt-6 w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold">Salvar Configurações</button>
+                            </div>
+                        </div>
+                        <div className="mt-6 bg-gray-900 p-4 rounded-lg">
+                            <BingoMasterBoard drawnNumbers={gameState?.drawnNumbers || []} />
                         </div>
                     </div>
                 );
@@ -1060,7 +1066,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                 >
                                     {isClearingCards ? (
                                         <>
-                                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                             </svg>
