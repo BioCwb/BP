@@ -377,8 +377,8 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
                                     onClick={() => setExpandedHistoryId(expandedHistoryId === game.id ? null : game.id)}
                                     className="w-full text-left focus:outline-none"
                                 >
-                                    <div className="flex justify-between items-center">
-                                        <div>
+                                    <div className="flex justify-between items-start">
+                                        <div className="flex-grow">
                                             <p className="font-semibold text-purple-300">
                                                 Vencedor(es): {game.winners.length > 0 ? game.winners.map(w => w.displayName).join(', ') : 'Nenhum'}
                                             </p>
@@ -386,19 +386,28 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
                                                 {game.completedAt ? new Date(game.completedAt.toDate()).toLocaleString('pt-BR') : 'Data indisponível'}
                                             </p>
                                         </div>
-                                        <span className={`transform transition-transform text-purple-300 ${expandedHistoryId === game.id ? 'rotate-180' : 'rotate-0'}`}>▼</span>
+                                        <div className="text-right flex-shrink-0 ml-2">
+                                            <p className="text-sm font-bold text-yellow-400">Prêmio: {game.prizePool} F</p>
+                                            <span className={`transform transition-transform text-purple-300 inline-block mt-1 ${expandedHistoryId === game.id ? 'rotate-180' : 'rotate-0'}`}>▼</span>
+                                        </div>
                                     </div>
                                 </button>
                                 {expandedHistoryId === game.id && (
-                                    <div className="mt-2 pt-2 border-t border-gray-700">
-                                        <p className="text-sm font-semibold mb-1">Números Sorteados ({game.drawnNumbers.length}):</p>
-                                        <div className="flex flex-wrap gap-1">
-                                            {game.drawnNumbers.sort((a, b) => a - b).map(num => (
-                                                <span key={num} className="bg-green-500 text-white text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full">
-                                                    {num}
-                                                </span>
-                                            ))}
-                                        </div>
+                                    <div className="mt-2 pt-2 border-t border-gray-700 space-y-3">
+                                        {game.winners.map((winner, index) => (
+                                            <div key={index}>
+                                                <p className="text-sm font-semibold mb-1 text-center">Cartela Vencedora de {winner.displayName}:</p>
+                                                <div className="grid grid-cols-5 gap-1 p-1 bg-gray-800 rounded-md max-w-[200px] mx-auto">
+                                                    {winner.card.map((num, i) => (
+                                                        <div key={i} className={`flex items-center justify-center aspect-square rounded-sm text-xs font-bold ${
+                                                            num === 0 ? 'bg-yellow-500 text-black' : 'bg-purple-600 text-white'
+                                                        }`}>
+                                                            {num === 0 ? '★' : num}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 )}
                             </div>
