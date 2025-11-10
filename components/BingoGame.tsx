@@ -273,6 +273,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
     // Main game loop - ONLY RUNS FOR THE HOST
     useEffect(() => {
         if (!gameState || gameState.host !== user.uid || gameState.status !== 'running') {
+            isGameLoopRunning.current = false; // Ensure the loop flag is reset if conditions are not met
             return;
         }
     

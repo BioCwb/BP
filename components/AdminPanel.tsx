@@ -6,6 +6,7 @@ import { TrashIcon } from './icons/TrashIcon';
 import { EyeIcon } from './icons/EyeIcon';
 import { useNotification } from '../context/NotificationContext';
 import { BingoMasterBoard } from './BingoMasterBoard';
+import { calculateCardProgress } from '../utils/bingoUtils';
 
 interface AdminPanelProps {
     user: firebase.User;
@@ -89,6 +90,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [adminLogSearch, setAdminLogSearch] = useState('');
     const [selectedCardModal, setSelectedCardModal] = useState<BingoCardData | null>(null);
     const [activeTab, setActiveTab] = useState<AdminTab>('overview');
+    const isGameLoopRunning = useRef(false);
 
     // State for the "Clear All Cards" confirmation modal
     const [isClearAllModalOpen, setIsClearAllModalOpen] = useState(false);
@@ -137,6 +139,103 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
             unsubLogs();
         };
     }, [gameDocRef, purchaseHistoryCollectionRef, chatCollectionRef, adminLogsCollectionRef]);
+    
+    // Game loop logic, allowing the Admin Panel to act as the host
+    useEffect(() => {
+        if (!gameState || gameState.host !== user.uid || gameState.status !== 'running') {
+            isGameLoopRunning.current = false;
+            return;
+        }
+    
+        const gameLoop = setInterval(async () => {
+            if (isGameLoopRunning.current) {
+                return;
+            }
+            isGameLoopRunning.current = true;
+    
+            try {
+                await db.runTransaction(async (transaction) => {
+                    const gameDoc = await transaction.get(gameDocRef);
+                    if (!gameDoc.exists) throw new Error("Jogo não encontrado na transação.");
+                    const currentGameState = gameDoc.data() as GameState;
+    
+                    if (currentGameState.status !== 'running') {
+                        return;
+                    }
+    
+                    let newCountdown = currentGameState.countdown - 1;
+    
+                    if (newCountdown > 0) {
+                        transaction.update(gameDocRef, { countdown: newCountdown });
+                    } else {
+                        const drawnNumbers = currentGameState.drawnNumbers;
+                        if (drawnNumbers.length >= 60) {
+                            transaction.update(gameDocRef, { status: 'ended', winners: [] });
+                            return;
+                        }
+    
+                        let newNumber;
+                        do {
+                            newNumber = Math.floor(Math.random() * 60) + 1;
+                        } while (drawnNumbers.includes(newNumber));
+    
+                        const updatedDrawnNumbers = [...drawnNumbers, newNumber];
+                        const winners: { uid: string, displayName: string, card: number[] }[] = [];
+                        const updatedPlayers = { ...currentGameState.players };
+    
+                        const playerIds = Object.keys(currentGameState.players || {});
+                        for (const uid of playerIds) {
+                            const playerCardsRef = db.collection('player_cards').doc(uid).collection('cards').doc('active_game');
+                            const playerCardsDoc = await transaction.get(playerCardsRef);
+                            
+                            if (playerCardsDoc.exists) {
+                                const cards = playerCardsDoc.data()?.cards as BingoCardData[] || [];
+                                let bestProgress = 99;
+    
+                                for (const card of cards) {
+                                    const { isBingo, numbersToWin } = calculateCardProgress(card.numbers, updatedDrawnNumbers);
+                                    if (isBingo) {
+                                        winners.push({
+                                            uid: uid,
+                                            displayName: currentGameState.players[uid].displayName,
+                                            card: card.numbers
+                                        });
+                                    }
+                                    if (numbersToWin < bestProgress) {
+                                        bestProgress = numbersToWin;
+                                    }
+                                }
+                                if (updatedPlayers[uid]) {
+                                    updatedPlayers[uid].progress = bestProgress;
+                                }
+                            }
+                        }
+    
+                        if (winners.length > 0) {
+                            transaction.update(gameDocRef, {
+                                status: 'ended',
+                                winners: winners,
+                                drawnNumbers: updatedDrawnNumbers,
+                                players: updatedPlayers,
+                            });
+                        } else {
+                            transaction.update(gameDocRef, {
+                                drawnNumbers: updatedDrawnNumbers,
+                                countdown: currentGameState.drawIntervalDuration || 5,
+                                players: updatedPlayers,
+                            });
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error("Erro no loop do jogo (Admin Panel):", error);
+            } finally {
+                isGameLoopRunning.current = false;
+            }
+        }, 1000);
+    
+        return () => clearInterval(gameLoop);
+    }, [gameState, user.uid, gameDocRef]);
 
     useEffect(() => {
         const statusCollectionRef = db.collection('player_status');
@@ -1061,7 +1160,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                 >
                                     {isClearingCards ? (
                                         <>
-                                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                                                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                                                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                                             </svg>
