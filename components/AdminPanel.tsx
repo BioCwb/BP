@@ -88,7 +88,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [purchaseHistorySearch, setPurchaseHistorySearch] = useState('');
     const [chatSearch, setChatSearch] = useState('');
     const [adminLogSearch, setAdminLogSearch] = useState('');
-    const [selectedCardModal, setSelectedCardModal] = useState<BingoCardData | null>(null);
+    const [selectedCardModal, setSelectedCardModal] = useState<{ card: BingoCardData; ownerId: string; ownerName: string; } | null>(null);
     const [activeTab, setActiveTab] = useState<AdminTab>('overview');
     const isGameLoopRunning = useRef(false);
     const [isTabVisible, setIsTabVisible] = useState(() => document.visibilityState === 'visible');
@@ -464,6 +464,75 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
         } catch (error: any) {
             console.error("Erro ao remover cartela:", error);
             showNotification(error.message || 'Falha ao remover a cartela.', 'error');
+        }
+    };
+    
+    const handleDeleteSpecificCard = async (cardToDelete: BingoCardData, ownerId: string, ownerName: string) => {
+        const justification = window.prompt(`Justifique a remoção desta cartela específica de ${ownerName}:`);
+        if (!justification || justification.trim() === '') {
+            showNotification('A justificação é obrigatória.', 'error');
+            return;
+        }
+
+        const playerCardsRef = db.collection('player_cards').doc(ownerId).collection('cards').doc('active_game');
+        const userRef = db.collection('users').doc(ownerId);
+        const adminLogRef = db.collection('admin_logs').doc();
+
+        try {
+            await db.runTransaction(async (transaction) => {
+                const gameDoc = await transaction.get(gameDocRef);
+                const playerCardsDoc = await transaction.get(playerCardsRef);
+                const userDoc = await transaction.get(userRef);
+
+                if (!gameDoc.exists || !playerCardsDoc.exists || !userDoc.exists) {
+                    throw new Error("Não foi possível encontrar todos os dados necessários.");
+                }
+
+                const playerCardsData = playerCardsDoc.data();
+                const currentCards = playerCardsData?.cards as BingoCardData[] || [];
+                
+                const cardIndex = currentCards.findIndex(c => c.id === cardToDelete.id);
+                if (cardIndex === -1) {
+                    throw new Error("A cartela selecionada não foi encontrada para este jogador.");
+                }
+
+                const updatedCards = currentCards.filter(c => c.id !== cardToDelete.id);
+
+                transaction.update(playerCardsRef, { cards: updatedCards });
+                transaction.update(gameDocRef, {
+                    prizePool: increment(-9),
+                    [`players.${ownerId}.cardCount`]: increment(-1),
+                });
+                transaction.update(userRef, { fichas: increment(10) });
+
+                transaction.set(adminLogRef, {
+                    adminUid: user.uid,
+                    adminName: user.displayName,
+                    targetUid: ownerId,
+                    targetName: ownerName,
+                    action: 'remove_specific_card',
+                    justification: justification,
+                    details: {
+                        removedCardId: cardToDelete.id,
+                        removedCardNumbers: cardToDelete.numbers,
+                    },
+                    timestamp: serverTimestamp(),
+                });
+            });
+
+            showNotification('Cartela removida e jogador reembolsado.', 'success');
+            
+            // Update local state for immediate UI feedback
+            setPlayerCardDetails(prev => {
+                const updatedPlayerCards = (prev[ownerId] || []).filter(c => c.id !== cardToDelete.id);
+                return { ...prev, [ownerId]: updatedPlayerCards };
+            });
+
+            setSelectedCardModal(null); // Close modal on success
+
+        } catch (error: any) {
+            console.error("Erro ao remover cartela específica:", error);
+            showNotification(error.message || 'Falha ao remover a cartela específica.', 'error');
         }
     };
 
@@ -879,7 +948,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                                                     <div className="flex items-center justify-between mb-3">
                                                                         <p className="text-base font-semibold text-purple-300">Cartela #{index + 1} <span className="text-xs text-gray-400 font-mono">(ID: {card?.id?.substring(0, 8) || 'Inválido'})</span></p>
                                                                          <button
-                                                                            onClick={() => setSelectedCardModal(card)}
+                                                                            onClick={() => setSelectedCardModal({ card: card, ownerId: player.uid, ownerName: player.displayName })}
                                                                             className="p-1 text-gray-400 hover:text-white transition-colors"
                                                                             aria-label="Visualizar detalhes da cartela"
                                                                         >
@@ -1086,14 +1155,14 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                             <h3 className="text-2xl font-bold text-purple-400">Detalhes da Cartela</h3>
                             <button onClick={() => setSelectedCardModal(null)} className="text-gray-400 hover:text-white text-3xl leading-none">&times;</button>
                         </div>
-                        <p className="text-sm text-gray-400 mb-4 font-mono">ID: {selectedCardModal.id}</p>
+                        <p className="text-sm text-gray-400 mb-4 font-mono">ID: {selectedCardModal.card.id}</p>
                         <div className="grid grid-cols-5 gap-4 text-center">
                             {['B', 'I', 'N', 'G', 'O'].map((letter, colIndex) => (
                                 <div key={letter}>
                                     <h4 className="text-xl font-bold mb-2 text-purple-300">{letter}</h4>
                                     <div className="space-y-2">
                                         {Array.from({ length: 5 }).map((_, rowIndex) => {
-                                            const num = selectedCardModal.numbers[rowIndex * 5 + colIndex];
+                                            const num = selectedCardModal.card.numbers[rowIndex * 5 + colIndex];
                                             const isDrawn = gameState?.drawnNumbers.includes(num);
                                             const isCenter = num === 0;
                                             return (
@@ -1106,9 +1175,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                 </div>
                             ))}
                         </div>
-                        <button onClick={() => setSelectedCardModal(null)} className="mt-6 w-full py-2 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold">
-                            Fechar
-                        </button>
+                        <div className="mt-6 flex gap-4">
+                            <button 
+                                onClick={() => setSelectedCardModal(null)} 
+                                className="flex-1 py-2 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold"
+                            >
+                                Fechar
+                            </button>
+                            <button
+                                onClick={() => handleDeleteSpecificCard(selectedCardModal.card, selectedCardModal.ownerId, selectedCardModal.ownerName)}
+                                disabled={gameState?.status !== 'waiting'}
+                                className="flex-1 flex items-center justify-center gap-2 py-2 px-4 bg-red-600 hover:bg-red-700 rounded-lg font-semibold disabled:bg-gray-600 disabled:cursor-not-allowed"
+                            >
+                                <TrashIcon className="w-5 h-5" />
+                                Deletar Cartela
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
