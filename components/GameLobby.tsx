@@ -5,6 +5,8 @@ import { db, arrayUnion, increment, serverTimestamp } from '../firebase/config';
 import type { GameState } from './BingoGame';
 import { generateBingoCard } from '../utils/bingoUtils';
 import { useNotification } from '../context/NotificationContext';
+import { CoinIcon } from './icons/CoinIcon';
+import { PurchaseFichasModal } from './PurchaseFichasModal';
 
 interface GameLobbyProps {
   user: firebase.User;
@@ -54,6 +56,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
   const [onlinePlayersCount, setOnlinePlayersCount] = useState(0);
   const [gameHistory, setGameHistory] = useState<GameHistoryItem[]>([]);
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
+  const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
 
   const gameDocRef = useMemo(() => db.collection('games').doc('active_game'), []);
   const myCardsCollectionRef = useMemo(() => db.collection('player_cards').doc(user.uid).collection('cards').doc('active_game'), [user.uid]);
@@ -320,6 +323,13 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
                         {isBuying ? 'Comprando...' : 'Comprar Cartela (10 F)'}
                     </button>
                     <button
+                        onClick={() => setIsPurchaseModalOpen(true)}
+                        className="w-full py-3 px-4 bg-yellow-500 hover:bg-yellow-600 text-black rounded-lg font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:ring-opacity-50 flex items-center justify-center gap-2"
+                     >
+                        <CoinIcon className="w-5 h-5" />
+                        Comprar Fichas (PIX)
+                    </button>
+                    <button
                         onClick={onSpectate}
                         className="w-full py-3 px-4 bg-teal-600 hover:bg-teal-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-opacity-50"
                     >
@@ -425,6 +435,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
                 <button type="submit" className="py-2 px-4 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-semibold">Enviar</button>
             </form>
         </div>
+        <PurchaseFichasModal isOpen={isPurchaseModalOpen} onClose={() => setIsPurchaseModalOpen(false)} />
     </div>
   );
 };
