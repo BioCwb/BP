@@ -4,6 +4,7 @@ import { db, serverTimestamp, increment, auth, EmailAuthProvider, FieldPath } fr
 import type { GameState } from './BingoGame';
 import { TrashIcon } from './icons/TrashIcon';
 import { EyeIcon } from './icons/EyeIcon';
+import { useNotification } from '../context/NotificationContext';
 
 interface AdminPanelProps {
     user: firebase.User;
@@ -53,7 +54,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [lobbyTime, setLobbyTime] = useState(30);
     const [drawTime, setDrawTime] = useState(8);
     const [endTime, setEndTime] = useState(15);
-    const [message, setMessage] = useState<{ type: 'success' | 'error', text: string } | null>(null);
+    const { showNotification } = useNotification();
     const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(null);
     const [playerCardDetails, setPlayerCardDetails] = useState<{ [uid: string]: BingoCardData[] }>({});
     const [isLoadingCards, setIsLoadingCards] = useState(false);
@@ -191,15 +192,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
         );
     }, [adminLogs, adminLogSearch]);
     
-    const showMessage = (type: 'success' | 'error', text: string) => {
-        setMessage({ type, text });
-        setTimeout(() => setMessage(null), 4000);
-    };
-    
     const handleDeleteChatMessage = async (message: ChatMessage) => {
         const adminUser = auth.currentUser;
         if (!adminUser) {
-            showMessage('error', 'Administrador não autenticado. Por favor, faça login novamente.');
+            showNotification('Administrador não autenticado. Por favor, faça login novamente.', 'error');
             return;
         }
 
@@ -225,10 +221,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                 });
 
                 await batch.commit();
-                showMessage('success', 'Mensagem apagada com sucesso.');
+                showNotification('Mensagem apagada com sucesso.', 'success');
             } catch (error) {
                 console.error("Error deleting chat message:", error);
-                showMessage('error', 'Falha ao apagar a mensagem.');
+                showNotification('Falha ao apagar a mensagem.', 'error');
             }
         }
     };
@@ -248,7 +244,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                 setPlayerCardDetails(prev => ({ ...prev, [uid]: doc.exists ? (doc.data()?.cards as BingoCardData[] || []) : [] }));
             } catch (error) {
                 console.error("Error fetching player cards:", error);
-                showMessage('error', 'Falha ao carregar cartelas do jogador.');
+                showNotification('Falha ao carregar cartelas do jogador.', 'error');
             } finally {
                 setIsLoadingCards(false);
             }
@@ -260,7 +256,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     
         const justification = window.prompt(`Justifique a remoção da última cartela de ${gameState.players[playerId].displayName}:`);
         if (!justification || justification.trim() === '') {
-            showMessage('error', 'A justificação é obrigatória.');
+            showNotification('A justificação é obrigatória.', 'error');
             return;
         }
     
@@ -306,10 +302,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                 });
             });
     
-            showMessage('success', 'Cartela removida e jogador reembolsado.');
+            showNotification('Cartela removida e jogador reembolsado.', 'success');
         } catch (error: any) {
             console.error("Erro ao remover cartela:", error);
-            showMessage('error', error.message || 'Falha ao remover a cartela.');
+            showNotification(error.message || 'Falha ao remover a cartela.', 'error');
         }
     };
 
@@ -330,10 +326,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                 timestamp: serverTimestamp(),
             });
 
-            showMessage('success', 'Configurações salvas com sucesso!');
+            showNotification('Configurações salvas com sucesso!', 'success');
         } catch (error) {
             console.error("Failed to save settings:", error);
-            showMessage('error', 'Falha ao salvar configurações.');
+            showNotification('Falha ao salvar configurações.', 'error');
         }
     };
 
@@ -360,19 +356,19 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                     timestamp: serverTimestamp(),
                 });
 
-                showMessage('success', 'Jogo iniciado com sucesso!');
+                showNotification('Jogo iniciado com sucesso!', 'success');
             } catch (error) {
-                showMessage('error', 'Falha ao forçar o início do jogo.');
+                showNotification('Falha ao forçar o início do jogo.', 'error');
             }
         } else {
-            showMessage('error', 'O jogo requer no mínimo 2 jogadores com cartelas para iniciar.');
+            showNotification('O jogo requer no mínimo 2 jogadores com cartelas para iniciar.', 'error');
         }
     };
     
     const handleResetGame = async () => {
         if (window.confirm('Tem certeza que deseja resetar o jogo? Isso limpará todos os jogadores e cartelas.')) {
             if (!gameState) {
-                showMessage('error', 'Estado do jogo não encontrado.');
+                showNotification('Estado do jogo não encontrado.', 'error');
                 return;
             }
              try {
@@ -428,9 +424,9 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                 });
                 
                 await batch.commit();
-                showMessage('success', 'Jogo resetado com sucesso!');
+                showNotification('Jogo resetado com sucesso!', 'success');
             } catch (error) {
-                showMessage('error', 'Falha ao resetar o jogo.');
+                showNotification('Falha ao resetar o jogo.', 'error');
                 console.error(error);
             }
         }
@@ -464,22 +460,22 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                 timestamp: serverTimestamp(),
             });
 
-            showMessage('success', `Jogo ${isPausing ? 'pausado' : 'retomado'} com sucesso.`);
+            showNotification(`Jogo ${isPausing ? 'pausado' : 'retomado'} com sucesso.`, 'success');
 
         } catch (error) {
-            showMessage('error', `Falha ao ${isPausing ? 'pausar' : 'retomar'} o jogo.`);
+            showNotification(`Falha ao ${isPausing ? 'pausar' : 'retomar'} o jogo.`, 'error');
         }
     };
     
     const handleClearAllCardsClick = () => {
         if (!gameState || Object.keys(gameState.players).length === 0) {
-            showMessage('error', 'Não há jogadores com cartelas para limpar.');
+            showNotification('Não há jogadores com cartelas para limpar.', 'error');
             return;
         }
     
         const isEmailProvider = user.providerData.some(p => p.providerId === 'password');
         if (!isEmailProvider) {
-            showMessage('error', 'A verificação de senha só está disponível para administradores com login via e-mail/senha.');
+            showNotification('A verificação de senha só está disponível para administradores com login via e-mail/senha.', 'error');
             return;
         }
         setIsClearAllModalOpen(true);
@@ -554,7 +550,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                 });
             });
     
-            showMessage('success', 'Todas as cartelas foram limpas e os jogadores reembolsados.');
+            showNotification('Todas as cartelas foram limpas e os jogadores reembolsados.', 'success');
             setIsClearAllModalOpen(false);
             setClearAllPassword('');
             setClearAllJustification('');
@@ -578,12 +574,6 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                 <h2 className="text-3xl font-bold">Painel de Administração</h2>
                 <button onClick={onBack} className="text-gray-300 hover:text-white">&larr; Voltar para o Lobby</button>
             </div>
-
-            {message && (
-                <div className={`mb-4 text-center p-3 rounded-lg ${message.type === 'success' ? 'bg-green-800 text-green-200' : 'bg-red-800 text-red-200'}`}>
-                    {message.text}
-                </div>
-            )}
 
             {/* Top Stats Row */}
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 mb-6 text-center">

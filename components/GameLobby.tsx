@@ -4,6 +4,7 @@ import type firebase from 'firebase/compat/app';
 import { db, arrayUnion, increment, serverTimestamp } from '../firebase/config';
 import type { GameState } from './BingoGame';
 import { generateBingoCard } from '../utils/bingoUtils';
+import { useNotification } from '../context/NotificationContext';
 
 interface GameLobbyProps {
   user: firebase.User;
@@ -42,7 +43,7 @@ interface GameHistoryItem {
 export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, onSpectate, onManageProfile, onLogout, onGoToAdmin }) => {
   const [gameState, setGameState] = useState<GameState | null>(null);
   const [myCardCount, setMyCardCount] = useState(0);
-  const [error, setError] = useState<string | null>(null);
+  const { showNotification } = useNotification();
   const [isBuying, setIsBuying] = useState(false);
   const [isBonusAvailable, setIsBonusAvailable] = useState(false);
   const [bonusCooldown, setBonusCooldown] = useState('');
@@ -169,22 +170,21 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
         setNewMessage('');
     } catch (error) {
         console.error("Error sending message:", error);
-        setError("Não foi possível enviar a mensagem.");
+        showNotification("Não foi possível enviar a mensagem.", 'error');
     }
   };
   
   const handleBuyCard = async () => {
-    setError(null);
     setIsBuying(true);
 
     // Client-side validation
     if (myCardCount >= 10) {
-        setError('Você não pode ter mais de 10 cartelas.');
+        showNotification('Você não pode ter mais de 10 cartelas.', 'error');
         setIsBuying(false);
         return;
     }
     if (userData.fichas < 10) {
-        setError('Fichas (F) insuficientes para comprar uma cartela.');
+        showNotification('Fichas (F) insuficientes para comprar uma cartela.', 'error');
         setIsBuying(false);
         return;
     }
@@ -256,11 +256,11 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
     } catch (e: any) {
         console.error("Buy card transaction failed:", e);
         if (e.message.includes('10 cartelas')) {
-            setError('Você não pode ter mais de 10 cartelas.');
+            showNotification('Você não pode ter mais de 10 cartelas.', 'error');
         } else if (e.message.includes('insuficientes')) {
-            setError('Fichas (F) insuficientes para comprar uma cartela.');
+            showNotification('Fichas (F) insuficientes para comprar uma cartela.', 'error');
         } else {
-            setError(e.message);
+            showNotification(e.message, 'error');
         }
     } finally {
         setIsBuying(false);
@@ -272,7 +272,6 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
     if (!isBonusAvailable || isClaimingBonus) return;
     
     setIsClaimingBonus(true);
-    setError(null);
     
     try {
         const userDocRef = db.collection("users").doc(user.uid);
@@ -282,7 +281,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
         });
     } catch (e: any) {
         console.error("Daily bonus claim failed:", e);
-        setError("Falha ao resgatar o bônus. Tente novamente.");
+        showNotification("Falha ao resgatar o bônus. Tente novamente.", 'error');
     } finally {
         setIsClaimingBonus(false);
     }
@@ -301,8 +300,6 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
                     <p className="text-lg text-green-400 mt-1">Jogadores Online: {onlinePlayersCount}</p>
                     <p className="text-lg text-gray-300 mt-1">Você tem {myCardCount} cartela(s).</p>
                 </div>
-                
-                {error && <p className="text-red-400 bg-red-900 bg-opacity-50 p-3 rounded-lg mb-4">{error}</p>}
                 
                 <div className="space-y-4">
                      <button

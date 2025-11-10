@@ -6,6 +6,7 @@ import { db, increment, serverTimestamp, FieldPath } from '../firebase/config';
 import { BingoCard } from './BingoCard';
 import { calculateCardProgress } from '../utils/bingoUtils';
 import { BingoMasterBoard } from './BingoMasterBoard';
+import { useNotification } from '../context/NotificationContext';
 
 
 export interface GameState {
@@ -50,7 +51,7 @@ const getBingoLetter = (num: number) => {
 export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLobby, onSessionReset, isSpectator = false }) => {
     const [gameState, setGameState] = useState<GameState | null>(null);
     const [myCards, setMyCards] = useState<BingoCardData[]>([]);
-    const [error, setError] = useState<string | null>(null);
+    const { showNotification } = useNotification();
     const [endGameCountdown, setEndGameCountdown] = useState(10);
     const [playerStatuses, setPlayerStatuses] = useState<{ [uid: string]: 'online' | 'offline' }>({});
     const [allPlayerCards, setAllPlayerCards] = useState<{[uid: string]: {displayName: string, cards: BingoCardData[]}}>({});
@@ -70,13 +71,13 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                 const newState = doc.data() as GameState;
                 setGameState(newState);
             } else {
-                 setError('O jogo ativo não foi encontrado. Redirecionando para o lobby.');
+                 showNotification('O jogo ativo não foi encontrado. Redirecionando para o lobby.', 'error');
                  setTimeout(() => onBackToLobby(), 3000);
             }
         }, (err) => {
             if (!isMounted) return;
             console.error("Error fetching game state:", err);
-            setError('Falha ao conectar-se ao jogo. Verifique sua conexão.');
+            showNotification('Falha ao conectar-se ao jogo. Verifique sua conexão.', 'error');
         });
         
         let unsubCards: (() => void) | null = null;
@@ -87,7 +88,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
             }, (err) => {
                 if (!isMounted) return;
                 console.error("Error fetching player cards:", err);
-                setError('Falha ao carregar suas cartelas. Verifique sua conexão.');
+                showNotification('Falha ao carregar suas cartelas. Verifique sua conexão.', 'error');
             });
         }
 
@@ -96,7 +97,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
             unsubGame();
             if (unsubCards) unsubCards();
         };
-    }, [user, gameDocRef, myCardsCollectionRef, isSpectator, onBackToLobby]);
+    }, [user, gameDocRef, myCardsCollectionRef, isSpectator, onBackToLobby, showNotification]);
 
     // Effect to show "Game Started" notification.
     useEffect(() => {
@@ -260,21 +261,6 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
             });
     }, [gameState]);
     
-    if (error) {
-        return (
-            <div className="w-full h-screen flex flex-col items-center justify-center text-center p-4">
-                <h2 className="text-3xl font-bold text-red-400 mb-4">Ocorreu um Erro</h2>
-                <p className="text-lg text-gray-300 mb-6">{error}</p>
-                <button
-                    onClick={onSessionReset}
-                    className="py-3 px-6 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-semibold"
-                >
-                    Reiniciar Sessão
-                </button>
-            </div>
-        );
-    }
-
     if (!gameState) return <div className="text-center text-xl w-full h-screen flex items-center justify-center">Carregando Jogo de Bingo...</div>;
 
     const lastDrawnNumber = gameState.drawnNumbers[gameState.drawnNumbers.length - 1] || null;
@@ -419,7 +405,6 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                     <div className="flex-shrink-0 bg-gray-800 rounded-lg p-4 mb-4 flex justify-between items-center">
                         <h2 className="text-xl font-bold">{isSpectator ? "Cartelas dos Jogadores" : `Suas Cartelas (${myCards.length})`}</h2>
                     </div>
-                    {error && !isSpectator && <p className="text-red-400 text-center mb-2">{error}</p>}
                     <div className="flex-grow overflow-y-auto">
                        {renderCards()}
                     </div>

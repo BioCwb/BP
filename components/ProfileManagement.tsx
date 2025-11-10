@@ -5,6 +5,7 @@ import type firebase from 'firebase/compat/app';
 import { InputField } from './InputField';
 import { UserIcon } from './icons/UserIcon';
 import { LockIcon } from './icons/LockIcon';
+import { useNotification } from '../context/NotificationContext';
 
 interface ProfileManagementProps {
   user: firebase.User;
@@ -13,22 +14,17 @@ interface ProfileManagementProps {
 
 export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, onBack }) => {
   const [displayName, setDisplayName] = useState(user.displayName || '');
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const { showNotification } = useNotification();
   
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmNewPassword, setConfirmNewPassword] = useState('');
-  const [passwordError, setPasswordError] = useState<string | null>(null);
-  const [passwordSuccess, setPasswordSuccess] = useState<string | null>(null);
 
   const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
-    setSuccess(null);
 
     if (displayName === user.displayName) {
-        setError('Você não alterou seu nome de usuário.');
+        showNotification('Você não alterou seu nome de usuário.', 'error');
         return;
     }
     
@@ -37,27 +33,25 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, onBa
     try {
       // FIX: Switched from v9 updateProfile(user, ...) to v8 user.updateProfile(...)
       await auth.currentUser.updateProfile({ displayName });
-      setSuccess('Perfil atualizado com sucesso!');
+      showNotification('Perfil atualizado com sucesso!', 'success');
     } catch (err) {
-      setError('Falha ao atualizar o perfil. Por favor, tente novamente.');
+      showNotification('Falha ao atualizar o perfil. Por favor, tente novamente.', 'error');
     }
   };
   
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
-    setPasswordError(null);
-    setPasswordSuccess(null);
 
     if (!currentPassword || !newPassword || !confirmNewPassword) {
-      setPasswordError('Por favor, preencha todos os campos de senha.');
+      showNotification('Por favor, preencha todos os campos de senha.', 'error');
       return;
     }
     if (newPassword !== confirmNewPassword) {
-      setPasswordError('As novas senhas não coincidem.');
+      showNotification('As novas senhas não coincidem.', 'error');
       return;
     }
     if (!auth.currentUser || !auth.currentUser.email) {
-      setPasswordError('Não foi possível encontrar informações do usuário.');
+      showNotification('Não foi possível encontrar informações do usuário.', 'error');
       return;
     }
 
@@ -68,18 +62,18 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, onBa
       // FIX: Switched from v9 updatePassword(user, ...) to v8 user.updatePassword(...)
       await auth.currentUser.updatePassword(newPassword);
 
-      setPasswordSuccess('Senha alterada com sucesso!');
+      showNotification('Senha alterada com sucesso!', 'success');
       setCurrentPassword('');
       setNewPassword('');
       setConfirmNewPassword('');
     } catch (err: any) {
       if (err.code === 'auth/wrong-password') {
-        setPasswordError('Senha atual incorreta.');
+        showNotification('Senha atual incorreta.', 'error');
       } else if (err.code === 'auth/weak-password') {
-         setPasswordError('A senha deve ter pelo menos 6 caracteres.');
+         showNotification('A senha deve ter pelo menos 6 caracteres.', 'error');
       }
       else {
-        setPasswordError('Falha ao alterar a senha. Por favor, tente novamente.');
+        showNotification('Falha ao alterar a senha. Por favor, tente novamente.', 'error');
         console.error(err);
       }
     }
@@ -110,8 +104,6 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, onBa
         >
           Salvar Nome de Usuário
         </button>
-        {error && <p className="text-center text-red-400">{error}</p>}
-        {success && <p className="text-center text-green-400">{success}</p>}
       </form>
       
       {isEmailProvider ? (
@@ -150,8 +142,6 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, onBa
           >
             Atualizar Senha
           </button>
-           {passwordError && <p className="text-center text-red-400">{passwordError}</p>}
-          {passwordSuccess && <p className="text-center text-green-400">{passwordSuccess}</p>}
         </form>
       ) : (
         <div className="text-center text-gray-400">

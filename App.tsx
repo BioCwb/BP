@@ -13,6 +13,9 @@ import { ProfileManagement } from './components/ProfileManagement';
 import { GameLobby } from './components/GameLobby';
 import { BingoGame } from './components/BingoGame';
 import { AdminPanel } from './components/AdminPanel';
+import { useNotification } from './context/NotificationContext';
+import { Notification } from './components/Notification';
+
 
 type AuthMode = 'login' | 'register';
 type ViewMode = 'auth' | 'lobby' | 'game' | 'profile' | 'admin' | 'spectator';
@@ -60,7 +63,7 @@ export default function App() {
   const [registerPassword, setRegisterPassword] = useState('');
   const [registerConfirmPassword, setRegisterConfirmPassword] = useState('');
 
-  const [error, setError] = useState<string | null>(null);
+  const { showNotification } = useNotification();
   
   // Verification State
   const [showVerificationMessage, setShowVerificationMessage] = useState(false);
@@ -69,7 +72,6 @@ export default function App() {
 
   const handleTabChange = (mode: AuthMode) => {
     setAuthMode(mode);
-    setError(null);
     setShowVerificationMessage(false);
     setNeedsVerification(null);
   };
@@ -143,18 +145,17 @@ export default function App() {
         }
       }, (err) => {
           console.error("Error fetching user data:", err);
-          setError('Falha ao carregar seu perfil. Verifique sua conexão e desative bloqueadores de anúncio. Você foi desconectado.');
+          showNotification('Falha ao carregar seu perfil. Verifique sua conexão e desative bloqueadores de anúncio. Você foi desconectado.', 'error');
           handleLogout(); // Log out on critical data fetch failure
       });
       return () => unsubscribe();
     }
-  }, [currentUser?.uid]);
+  }, [currentUser?.uid, showNotification]);
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
     if (!loginEmail || !loginPassword) {
-      setError('Por favor, preencha todos os campos.');
+      showNotification('Por favor, preencha todos os campos.', 'error');
       return;
     }
     try {
@@ -166,12 +167,11 @@ export default function App() {
         await auth.signOut();
       }
     } catch (err: any) {
-      setError('E-mail ou senha inválidos.');
+      showNotification('E-mail ou senha inválidos.', 'error');
     }
   };
   
   const handleGoogleSignIn = async () => {
-    setError(null);
     setNeedsVerification(null);
     setShowVerificationMessage(false);
     try {
@@ -179,7 +179,7 @@ export default function App() {
         await auth.signInWithPopup(googleProvider);
     } catch (err: any) {
         if (err.code !== 'auth/popup-closed-by-user') {
-            setError('Falha ao entrar com o Google. Por favor, tente novamente.');
+            showNotification('Falha ao entrar com o Google. Por favor, tente novamente.', 'error');
             console.error(err);
         }
     }
@@ -187,13 +187,12 @@ export default function App() {
 
   const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
     if (!registerUsername || !registerEmail || !registerPassword || !registerConfirmPassword) {
-      setError('Por favor, preencha todos os campos.');
+      showNotification('Por favor, preencha todos os campos.', 'error');
       return;
     }
     if (registerPassword !== registerConfirmPassword) {
-      setError('As senhas não coincidem.');
+      showNotification('As senhas não coincidem.', 'error');
       return;
     }
     try {
@@ -225,11 +224,11 @@ export default function App() {
 
     } catch (err: any) {
         if (err.code === 'auth/email-already-in-use') {
-          setError('Este e-mail já está registrado.');
+          showNotification('Este e-mail já está registrado.', 'error');
         } else if (err.code === 'auth/weak-password') {
-          setError('A senha deve ter pelo menos 6 caracteres.');
+          showNotification('A senha deve ter pelo menos 6 caracteres.', 'error');
         } else {
-          setError('Falha ao criar uma conta. Por favor, tente novamente.');
+          showNotification('Falha ao criar uma conta. Por favor, tente novamente.', 'error');
         }
     }
   };
@@ -251,7 +250,7 @@ export default function App() {
         await needsVerification.sendEmailVerification();
         setResendStatus('sent');
     } catch (error) {
-        setError('Falha ao reenviar o e-mail de verificação.');
+        showNotification('Falha ao reenviar o e-mail de verificação.', 'error');
     }
   };
 
@@ -268,7 +267,6 @@ export default function App() {
                 Voltar para o Login
             </button>
         </div>
-        {error && <p className="mt-4 text-center text-red-400">{error}</p>}
       </div>
   );
   
@@ -313,7 +311,6 @@ export default function App() {
                   <InputField id="register-confirm-password" label="Confirmar Senha" type="password" value={registerConfirmPassword} onChange={(e) => setRegisterConfirmPassword(e.target.value)} placeholder="Confirme sua senha" icon={<LockIcon />} />
                 </AuthForm>
               )}
-              {error && (<p className="mt-4 text-center text-red-400 bg-red-900 bg-opacity-50 p-3 rounded-lg">{error}</p>)}
             </div>
           </div>
   );
@@ -349,6 +346,7 @@ export default function App() {
 
   return (
     <div className={appContainerClasses}>
+        <Notification />
         {viewMode === 'auth' && !showVerificationMessage && !needsVerification && (
             <div className="text-center mb-6 sm:mb-8">
                 <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white">NOITE DO BINGO</h1>
