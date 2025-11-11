@@ -508,10 +508,15 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                             BINGO!
                         </h2>
                         <div className="my-6">
-                            <h3 className="text-2xl font-bold mb-4">Parabéns ao(s) Vencedor(es)!</h3>
-                            {gameState.prizePool > 0 && gameState.winners.length > 0 &&
-                              <p className="text-lg text-yellow-300 mb-4">O prêmio de <span className="font-bold">{gameState.prizePool} F</span> foi dividido entre {gameState.winners.length} vencedor(es)!</p>
-                            }
+                            <h3 className="text-3xl font-bold mb-2">Parabéns ao(s) Vencedor(es)!</h3>
+                            {gameState.winners.length > 0 && (
+                                <p className="text-2xl font-semibold text-yellow-300 mb-4 break-words">
+                                    {gameState.winners.map(w => w.displayName).join(', ')}
+                                </p>
+                            )}
+                            {gameState.prizePool > 0 && gameState.winners.length > 0 && (
+                              <p className="text-lg text-gray-200 mb-4">O prêmio de <span className="font-bold text-white">{gameState.prizePool} F</span> foi dividido entre {gameState.winners.length} vencedor(es)!</p>
+                            )}
                         </div>
                         <p className="mt-4 text-lg">
                             Voltando para o lobby em <span className="font-bold text-2xl text-green-400">{endGameCountdown}s</span>...
