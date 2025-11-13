@@ -430,7 +430,7 @@ export default function App() {
         )}
         {renderContent()}
         <footer className="fixed bottom-0 right-0 p-2 text-xs text-gray-500">
-            Versão: 1.0.22
+            Versão: 1.0.23
         </footer>
     </div>
   );

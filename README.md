@@ -1,6 +1,6 @@
 # Noite do Bingo
 
-**Versão Atual: 1.0.22**
+**Versão Atual: 1.0.23**
 
 Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real construído com React, TypeScript e Firebase. Este projeto oferece uma experiência de jogo completa com autenticação de usuários, um lobby interativo, jogabilidade em tempo real e um painel de administração robusto para gerenciamento total da partida.
 
@@ -9,6 +9,7 @@ Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real cons
 ### Para Jogadores
 - **Autenticação Segura:** Sistema de login e registro com e-mail/senha e login social com Google. Inclui verificação de e-mail.
 - **Lobby do Jogo:** Uma área central onde os jogadores podem ver seu saldo, comprar cartelas e entrar na próxima partida.
+- **Contagem Regressiva para o Início:** Veja uma contagem regressiva animada no lobby quando a partida está prestes a começar, criando antecipação.
 - **Chat em Tempo Real no Lobby:** Converse com outros jogadores no lobby enquanto espera o início do jogo.
 - **Compra de Cartelas:** Os jogadores podem comprar até 10 cartelas por rodada usando fichas virtuais (F).
 - **Bônus Diário:** Possibilidade de resgatar 10 Fichas (F) gratuitas uma vez por dia para continuar jogando.
@@ -25,6 +26,7 @@ Bem-vindo ao **Noite do Bingo**, um jogo de bingo multiplayer em tempo real cons
 
 ### Para Administradores
 - **Painel de Administração:** Uma interface exclusiva para o administrador monitorar e controlar o jogo.
+- **Início Automático de Partida:** O jogo inicia uma contagem regressiva de 15 segundos automaticamente quando 4 ou mais jogadores compram cartelas. O administrador atua como "host" desta funcionalidade, que é cancelada se o número de jogadores cair.
 - **Monitoramento em Tempo Real:** Visualize o status do jogo, o número de jogadores, a quantidade de bolas sorteadas e o prêmio acumulado.
 - **Visualização de Números Sorteados:** Acompanhe os números sorteados em tempo real diretamente na aba de visão geral do painel.
 - **Controles Manuais do Jogo:**

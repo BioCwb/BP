@@ -299,7 +299,13 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
   const canBuyCard = gameState?.status === 'waiting' && !isBuying;
 
   return (
-    <div className="bg-gray-800 bg-opacity-70 backdrop-blur-sm rounded-xl shadow-2xl p-6 md:p-8 w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-8">
+    <div className="bg-gray-800 bg-opacity-70 backdrop-blur-sm rounded-xl shadow-2xl p-6 md:p-8 w-full max-w-4xl grid grid-cols-1 md:grid-cols-2 gap-8 relative">
+        {gameState?.status === 'waiting' && gameState.countdown > 0 && gameState.countdown < (gameState.lobbyCountdownDuration || 15) && (
+            <div className="absolute top-6 left-1/2 -translate-x-1/2 w-[90%] md:w-3/4 bg-green-600/95 text-white border-2 border-green-300 rounded-lg shadow-2xl z-10 p-3 text-center animate-pulse">
+                <p className="font-bold text-lg md:text-xl uppercase tracking-wider">O Jogo Começa em</p>
+                <p className="font-extrabold text-3xl md:text-4xl">{gameState.countdown}</p>
+            </div>
+        )}
         {/* Coluna da Esquerda: Controles do Jogo */}
         <div className="flex flex-col">
             <div className="text-center">

@@ -1040,6 +1040,75 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
         }
     };
     
+    const countdownIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    // Auto-start game countdown logic (Host-side)
+    useEffect(() => {
+        const cleanup = () => {
+            if (countdownIntervalRef.current) {
+                clearInterval(countdownIntervalRef.current);
+                countdownIntervalRef.current = null;
+            }
+        };
+
+        if (!gameState || !isTabVisible) {
+            cleanup();
+            return;
+        }
+
+        const shouldStartCountdown = gameState.status === 'waiting' && totalPlayers >= 4;
+        const isCountdownRunning = !!countdownIntervalRef.current;
+
+        // Start the countdown if conditions are met and it's not already running.
+        if (shouldStartCountdown && !isCountdownRunning) {
+            countdownIntervalRef.current = setInterval(() => {
+                db.runTransaction(async (transaction) => {
+                    const gameDoc = await transaction.get(gameDocRef);
+                    if (!gameDoc.exists) {
+                        cleanup(); // Stop if game doc is gone
+                        throw new Error("Jogo não encontrado na transação do countdown.");
+                    }
+                    const currentGameState = gameDoc.data() as GameState;
+
+                    // Re-verify conditions within the transaction for safety
+                    if (currentGameState.status !== 'waiting' || Object.keys(currentGameState.players || {}).length < 4) {
+                        // Conditions no longer met (e.g., a player left), stop the countdown and reset it.
+                        transaction.update(gameDocRef, { countdown: currentGameState.lobbyCountdownDuration || 15 });
+                        cleanup();
+                        return;
+                    }
+
+                    const newCountdown = currentGameState.countdown - 1;
+
+                    if (newCountdown > 0) {
+                        transaction.update(gameDocRef, { countdown: newCountdown });
+                    } else {
+                        // Countdown finished, start the game.
+                        transaction.update(gameDocRef, {
+                            status: 'running',
+                            host: user.uid,
+                            countdown: currentGameState.drawIntervalDuration || 5, // Reset countdown for number draws
+                        });
+                        cleanup(); // Stop this interval.
+                    }
+                }).catch(error => {
+                    console.error("Erro no countdown do auto-start:", error);
+                    cleanup(); // Stop on any transaction error.
+                });
+            }, 1000);
+        }
+        // Stop the countdown if conditions are no longer met (e.g., game started, players left)
+        else if (!shouldStartCountdown && isCountdownRunning) {
+            cleanup();
+            // Also reset the countdown value in Firestore if it was in progress
+            if (gameState.countdown < (gameState.lobbyCountdownDuration || 15)) {
+                gameDocRef.update({ countdown: gameState.lobbyCountdownDuration || 15 });
+            }
+        }
+        
+        return cleanup;
+    }, [gameState, totalPlayers, isTabVisible, user.uid, gameDocRef]);
+    
     const renderContent = () => {
         switch (activeTab) {
             case 'overview':
@@ -1309,7 +1378,7 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                             </div>
                                             <button 
                                                 onClick={() => handleDeleteChatMessage(msg)}
-                                                className="text-gray-500 hover:text-red-500 transition-colors p-1 rounded-full flex-shrink-0"
+                                                className="p-2 bg-gray-600 hover:bg-red-600 text-gray-300 hover:text-white rounded-lg transition-colors flex-shrink-0"
                                                 aria-label="Excluir mensagem"
                                             >
                                                 <TrashIcon className="w-5 h-5" />
