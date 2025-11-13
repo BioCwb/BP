@@ -2,6 +2,8 @@
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/auth';
 import 'firebase/compat/firestore';
+import 'firebase/compat/storage';
+import 'firebase/compat/database';
 
 const firebaseConfig = {
   apiKey: "AIzaSyAEYYhhN2sH42vkP7OVJoe8Wt7wy6-M6w0",
@@ -24,6 +26,8 @@ if (!firebase.apps.length) {
 // FIX: Export v8-style services.
 export const auth = firebase.auth();
 export const db = firebase.firestore();
+export const storage = firebase.storage();
+export const rtdb = firebase.database();
 
 // Export providers and utilities
 // FIX: Export v8-style providers and FieldValue methods.

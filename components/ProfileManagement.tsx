@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { auth, EmailAuthProvider, db } from '../firebase/config';
+import React, { useState, useRef } from 'react';
+import { auth, EmailAuthProvider, db, storage, rtdb } from '../firebase/config';
 // FIX: Removed v9 modular auth imports to switch to v8 compat syntax.
 import type firebase from 'firebase/compat/app';
 import { InputField } from './InputField';
@@ -11,6 +11,7 @@ import { PlayIcon } from './icons/PlayIcon';
 import { TicketIcon } from './icons/TicketIcon';
 import { TrophyIcon } from './icons/TrophyIcon';
 import { KeyIcon } from './icons/KeyIcon';
+import { Avatar } from './Avatar';
 
 
 interface ProfileManagementProps {
@@ -31,6 +32,60 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, user
   const [pixKey, setPixKey] = useState(userData.pixKey || '');
   const [fullName, setFullName] = useState(userData.fullName || '');
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+        const file = e.target.files[0];
+        if (!file.type.startsWith('image/')) {
+            showNotification('Por favor, selecione um arquivo de imagem.', 'error');
+            return;
+        }
+        if (file.size > 2 * 1024 * 1024) { // 2MB limit
+            showNotification('O arquivo é muito grande. O limite é de 2MB.', 'error');
+            return;
+        }
+        setSelectedFile(file);
+        setImagePreview(URL.createObjectURL(file));
+    }
+  };
+
+  const cancelPhotoChange = () => {
+    setSelectedFile(null);
+    setImagePreview(null);
+    if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+    }
+  };
+
+  const handlePhotoUpload = async () => {
+    if (!selectedFile || !auth.currentUser) return;
+    setIsUploading(true);
+
+    try {
+        // FIX: Switched from v9 `storage()` to v8 `storage.ref()` to match project's Firebase version.
+        const storageRef = storage.ref(`profile_pictures/${auth.currentUser.uid}`);
+        const uploadTask = await storageRef.put(selectedFile);
+        const downloadURL = await uploadTask.ref.getDownloadURL();
+
+        await auth.currentUser.updateProfile({ photoURL: downloadURL });
+        const userRtdbRef = rtdb.ref(`users/${auth.currentUser.uid}`);
+        await userRtdbRef.update({ photoURL: downloadURL });
+
+        showNotification('Foto de perfil atualizada com sucesso!', 'success');
+        cancelPhotoChange();
+
+    } catch (error) {
+        console.error("Error uploading photo:", error);
+        showNotification('Falha ao enviar a foto. Tente novamente.', 'error');
+    } finally {
+        setIsUploading(false);
+    }
+  };
+
   const handleProfileUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -44,6 +99,8 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, user
     try {
       // FIX: Switched from v9 updateProfile(user, ...) to v8 user.updateProfile(...)
       await auth.currentUser.updateProfile({ displayName });
+      const userDocRef = db.collection('users').doc(auth.currentUser.uid);
+      await userDocRef.update({ displayName });
       showNotification('Perfil atualizado com sucesso!', 'success');
     } catch (err) {
       showNotification('Falha ao atualizar o perfil. Por favor, tente novamente.', 'error');
@@ -116,7 +173,42 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, user
         <button onClick={onBack} className="text-gray-300 hover:text-white">&larr; Voltar para o Lobby</button>
       </div>
 
-      <div className="border-b border-gray-700 pb-6 mb-6">
+      <div className="flex flex-col items-center mb-6 border-b border-gray-700 pb-6">
+        <Avatar src={imagePreview || userData.photoURL} alt={userData.displayName || ''} size="lg" />
+        <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept="image/png, image/jpeg"
+            className="hidden"
+        />
+        <button
+            onClick={() => fileInputRef.current?.click()}
+            className="mt-4 py-2 px-4 bg-gray-600 hover:bg-gray-700 rounded-lg text-white font-semibold text-sm transition-all duration-300"
+        >
+            Alterar Foto
+        </button>
+        {selectedFile && (
+            <div className="mt-4 flex gap-2">
+                 <button
+                    onClick={handlePhotoUpload}
+                    disabled={isUploading}
+                    className="py-2 px-4 bg-green-600 hover:bg-green-700 rounded-lg text-white font-semibold text-sm transition-all duration-300 disabled:bg-gray-500"
+                 >
+                    {isUploading ? 'Salvando...' : 'Salvar Foto'}
+                </button>
+                 <button
+                    onClick={cancelPhotoChange}
+                    disabled={isUploading}
+                    className="py-2 px-4 bg-red-600 hover:bg-red-700 rounded-lg text-white font-semibold text-sm"
+                 >
+                    Cancelar
+                </button>
+            </div>
+        )}
+      </div>
+
+      <div className="pb-6 mb-6">
         <h3 className="text-xl font-semibold text-white text-center mb-4">Estatísticas do Jogador</h3>
         <div className="space-y-3">
           <div className="flex items-center justify-between text-lg">

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { auth, googleProvider, db, serverTimestamp } from './firebase/config';
+import { auth, googleProvider, db, serverTimestamp, rtdb } from './firebase/config';
 // FIX: Removed firebase v9 modular imports as they are not compatible with the project setup, causing "no exported member" errors.
 // The functions are now called using the v8 syntax (e.g., auth.onAuthStateChanged).
 import type firebase from 'firebase/compat/app';
@@ -17,7 +17,7 @@ import { useNotification } from './context/NotificationContext';
 import { Notification } from './components/Notification';
 
 
-type AuthMode = 'login' | 'register';
+type AuthMode = 'login' | 'register' | 'forgotPassword';
 type ViewMode = 'auth' | 'lobby' | 'game' | 'profile' | 'admin' | 'spectator';
 
 export interface UserData {
@@ -31,6 +31,7 @@ export interface UserData {
   pixKeyType?: string;
   pixKey?: string;
   fullName?: string;
+  photoURL?: string;
 }
 
 // FIX: Moved TabButton component outside of the App component to prevent re-definition on each render
@@ -69,6 +70,9 @@ export default function App() {
   const [registerPassword, setRegisterPassword] = useState('');
   // FIX: Renamed the state setter from setRegisterPassword to setRegisterConfirmPassword to avoid redeclaring the same variable.
   const [registerConfirmPassword, setRegisterConfirmPassword] = useState('');
+  
+  // Forgot Password State
+  const [resetEmail, setResetEmail] = useState('');
 
   const { showNotification } = useNotification();
   
@@ -99,13 +103,16 @@ export default function App() {
              const newUserData: UserData = {
                 displayName: user.displayName || 'BingoPlayer',
                 email: user.email!,
+                photoURL: user.photoURL || '',
                 fichas: 100, // Welcome bonus
                 gamesPlayed: 0,
                 cardsPurchased: 0,
                 totalWinnings: 0,
             };
+            const { photoURL, ...firestoreData } = newUserData;
             // FIX: Switched from v9 setDoc(...) to v8 userDocRef.set(...)
-            await userDocRef.set(newUserData);
+            await userDocRef.set(firestoreData);
+            await rtdb.ref(`users/${user.uid}`).set({ photoURL });
         }
         
         setViewMode('lobby');
@@ -145,11 +152,10 @@ export default function App() {
   
   useEffect(() => {
     if (currentUser?.uid) {
-      // FIX: Switched from v9 doc(db, ...) to v8 db.collection(...).doc(...)
       const userDocRef = db.collection("users").doc(currentUser.uid);
-      // FIX: Switched from v9 onSnapshot(...) to v8 userDocRef.onSnapshot(...)
-      const unsubscribe = userDocRef.onSnapshot((doc) => {
-        // FIX: Switched from v9 doc.exists() to v8 doc.exists
+      const userRtdbRef = rtdb.ref(`users/${currentUser.uid}/photoURL`);
+      
+      const unsubscribeFirestore = userDocRef.onSnapshot((doc) => {
         if (doc.exists) {
           setUserData(doc.data() as UserData);
         }
@@ -158,7 +164,22 @@ export default function App() {
           showNotification('Falha ao carregar seu perfil. Verifique sua conexão e desative bloqueadores de anúncio. Você foi desconectado.', 'error');
           handleLogout(); // Log out on critical data fetch failure
       });
-      return () => unsubscribe();
+
+      const rtdbCallback = (snapshot: firebase.database.DataSnapshot) => {
+          const photoURL = snapshot.val();
+          if (photoURL !== undefined) {
+              setUserData(prevData => {
+                  const baseData = prevData || {} as UserData;
+                  return { ...baseData, photoURL };
+              });
+          }
+      };
+      userRtdbRef.on('value', rtdbCallback);
+
+      return () => {
+          unsubscribeFirestore();
+          userRtdbRef.off('value', rtdbCallback);
+      };
     }
   }, [currentUser?.uid, showNotification]);
 
@@ -181,6 +202,26 @@ export default function App() {
     }
   };
   
+  const handlePasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetEmail) {
+      showNotification('Por favor, digite seu e-mail.', 'error');
+      return;
+    }
+    try {
+      await auth.sendPasswordResetEmail(resetEmail);
+      // For security, show a generic success message to prevent user enumeration attacks.
+      showNotification('Se o e-mail estiver cadastrado, um link para redefinir a senha foi enviado.', 'success');
+      setAuthMode('login');
+      setResetEmail('');
+    } catch (err: any) {
+      console.error("Password reset error:", err);
+      // Still show the generic message even if Firebase throws an error like 'auth/user-not-found'.
+      showNotification('Se o e-mail estiver cadastrado, um link para redefinir a senha foi enviado.', 'success');
+      setAuthMode('login');
+    }
+  };
+
   const handleGoogleSignIn = async () => {
     setNeedsVerification(null);
     setShowVerificationMessage(false);
@@ -217,13 +258,16 @@ export default function App() {
         const newUserData: UserData = {
           displayName: registerUsername,
           email: registerEmail,
+          photoURL: '',
           fichas: 100, // Welcome bonus
           gamesPlayed: 0,
           cardsPurchased: 0,
           totalWinnings: 0,
         };
+        const { photoURL, ...firestoreData } = newUserData;
         // FIX: Switched from v9 setDoc(doc(db,...),...) to v8 db.collection(...).doc(...).set(...)
-        await db.collection("users").doc(user.uid).set(newUserData);
+        await db.collection("users").doc(user.uid).set(firestoreData);
+        await rtdb.ref(`users/${user.uid}`).set({ photoURL });
         
         // FIX: Switched from v9 sendEmailVerification(user) to v8 user.sendEmailVerification()
         await user.sendEmailVerification();
@@ -293,41 +337,79 @@ export default function App() {
       </div>
   );
   
-  const renderAuthForms = () => (
+  const renderAuthForms = () => {
+    let content;
+
+    if (authMode === 'login') {
+      content = (
+        <>
+          <AuthForm title="Bem-vindo de volta!" onSubmit={handleLoginSubmit} buttonText="Entrar">
+            <InputField id="login-email" label="E-mail" type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="Digite seu e-mail" icon={<EmailIcon />} />
+            <InputField id="login-password" label="Senha" type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="Digite sua senha" icon={<LockIcon />} />
+            <div className="text-right -mt-2">
+                <button
+                  type="button"
+                  onClick={() => setAuthMode('forgotPassword')}
+                  className="text-sm font-medium text-purple-400 hover:text-purple-300 focus:outline-none transition-colors duration-300"
+                >
+                  Esqueceu a senha?
+                </button>
+            </div>
+          </AuthForm>
+          <div className="relative flex py-5 items-center">
+            <div className="flex-grow border-t border-gray-600"></div>
+            <span className="flex-shrink mx-4 text-gray-400 text-sm">Ou</span>
+            <div className="flex-grow border-t border-gray-600"></div>
+          </div>
+          <button onClick={handleGoogleSignIn} aria-label="Sign in with Google" className="w-full flex items-center justify-center py-2.5 px-4 bg-white hover:bg-gray-200 rounded-lg text-gray-700 font-semibold transition-all duration-300 shadow-md">
+            <GoogleIcon className="w-5 h-5 mr-3" />
+            Entrar com o Google
+          </button>
+        </>
+      );
+    } else if (authMode === 'register') {
+      content = (
+        <AuthForm title="Criar Conta" onSubmit={handleRegisterSubmit} buttonText="Registrar">
+          <InputField id="register-username" label="Nome de usuário" type="text" value={registerUsername} onChange={(e) => setRegisterUsername(e.target.value)} placeholder="Escolha um nome de usuário" icon={<UserIcon />} />
+          <InputField id="register-email" label="E-mail" type="email" value={registerEmail} onChange={(e) => setRegisterEmail(e.target.value)} placeholder="Digite seu e-mail" icon={<EmailIcon />} />
+          <InputField id="register-password" label="Senha" type="password" value={registerPassword} onChange={(e) => setRegisterPassword(e.target.value)} placeholder="Crie uma senha" icon={<LockIcon />} />
+          {/* FIX: Used the correct state setter 'setRegisterConfirmPassword' for the confirm password field. */}
+          <InputField id="register-confirm-password" label="Confirmar Senha" type="password" value={registerConfirmPassword} onChange={(e) => setRegisterConfirmPassword(e.target.value)} placeholder="Confirme sua senha" icon={<LockIcon />} />
+        </AuthForm>
+      );
+    } else { // authMode === 'forgotPassword'
+        content = (
+          <div>
+            <AuthForm title="Redefinir Senha" onSubmit={handlePasswordReset} buttonText="Enviar Link">
+              <p className="text-gray-300 text-sm text-center -mt-2 mb-4">
+                  Digite seu e-mail e enviaremos um link para você voltar a acessar sua conta.
+              </p>
+              <InputField id="reset-email" label="E-mail" type="email" value={resetEmail} onChange={(e) => setResetEmail(e.target.value)} placeholder="Digite seu e-mail de cadastro" icon={<EmailIcon />} />
+            </AuthForm>
+            <div className="text-center mt-4">
+                <button type="button" onClick={() => setAuthMode('login')} className="text-sm font-medium text-purple-400 hover:text-purple-300 transition-colors">
+                    &larr; Voltar para o Login
+                </button>
+            </div>
+          </div>
+        );
+    }
+
+
+    return (
       <div className="w-full max-w-md bg-gray-800 bg-opacity-50 backdrop-blur-sm rounded-xl shadow-2xl overflow-hidden">
+        {authMode !== 'forgotPassword' && (
             <div className="flex">
               <TabButton mode="login" currentMode={authMode} onClick={handleTabChange}>Entrar</TabButton>
               <TabButton mode="register" currentMode={authMode} onClick={handleTabChange}>Registrar</TabButton>
             </div>
-            <div className="p-6 sm:p-8">
-              {authMode === 'login' ? (
-                <>
-                  <AuthForm title="Bem-vindo de volta!" onSubmit={handleLoginSubmit} buttonText="Entrar">
-                    <InputField id="login-email" label="E-mail" type="email" value={loginEmail} onChange={(e) => setLoginEmail(e.target.value)} placeholder="Digite seu e-mail" icon={<EmailIcon />} />
-                    <InputField id="login-password" label="Senha" type="password" value={loginPassword} onChange={(e) => setLoginPassword(e.target.value)} placeholder="Digite sua senha" icon={<LockIcon />} />
-                  </AuthForm>
-                  <div className="relative flex py-5 items-center">
-                    <div className="flex-grow border-t border-gray-600"></div>
-                    <span className="flex-shrink mx-4 text-gray-400 text-sm">Ou</span>
-                    <div className="flex-grow border-t border-gray-600"></div>
-                  </div>
-                  <button onClick={handleGoogleSignIn} aria-label="Sign in with Google" className="w-full flex items-center justify-center py-2.5 px-4 bg-white hover:bg-gray-200 rounded-lg text-gray-700 font-semibold transition-all duration-300 shadow-md">
-                    <GoogleIcon className="w-5 h-5 mr-3" />
-                    Entrar com o Google
-                  </button>
-                </>
-              ) : (
-                <AuthForm title="Criar Conta" onSubmit={handleRegisterSubmit} buttonText="Registrar">
-                  <InputField id="register-username" label="Nome de usuário" type="text" value={registerUsername} onChange={(e) => setRegisterUsername(e.target.value)} placeholder="Escolha um nome de usuário" icon={<UserIcon />} />
-                  <InputField id="register-email" label="E-mail" type="email" value={registerEmail} onChange={(e) => setRegisterEmail(e.target.value)} placeholder="Digite seu e-mail" icon={<EmailIcon />} />
-                  <InputField id="register-password" label="Senha" type="password" value={registerPassword} onChange={(e) => setRegisterPassword(e.target.value)} placeholder="Crie uma senha" icon={<LockIcon />} />
-                  {/* FIX: Used the correct state setter 'setRegisterConfirmPassword' for the confirm password field. */}
-                  <InputField id="register-confirm-password" label="Confirmar Senha" type="password" value={registerConfirmPassword} onChange={(e) => setRegisterConfirmPassword(e.target.value)} placeholder="Confirme sua senha" icon={<LockIcon />} />
-                </AuthForm>
-              )}
-            </div>
-          </div>
-  );
+        )}
+        <div className="p-6 sm:p-8">
+          {content}
+        </div>
+      </div>
+    );
+  };
 
   const renderContent = () => {
     if (loading || (currentUser && !userData)) {
@@ -369,7 +451,7 @@ export default function App() {
         )}
         {renderContent()}
         <footer className="fixed bottom-0 right-0 p-2 text-xs text-gray-500">
-            Versão: 1.0.20
+            Versão: 1.0.21
         </footer>
     </div>
   );

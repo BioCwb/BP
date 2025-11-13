@@ -7,6 +7,7 @@ import { generateBingoCard } from '../utils/bingoUtils';
 import { useNotification } from '../context/NotificationContext';
 import { CoinIcon } from './icons/CoinIcon';
 import { PurchaseFichasModal } from './PurchaseFichasModal';
+import { Avatar } from './Avatar';
 
 interface GameLobbyProps {
   user: firebase.User;
@@ -229,6 +230,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
             const player = newPlayers[user.uid];
             newPlayers[user.uid] = {
                 displayName: user.displayName || 'Player',
+                photoURL: userData.photoURL || null,
                 cardCount: (player?.cardCount || 0) + 1,
                 progress: player?.progress ?? 24, // Default progress for blackout bingo is 24
             };
@@ -301,8 +303,9 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
         {/* Coluna da Esquerda: Controles do Jogo */}
         <div className="flex flex-col">
             <div className="text-center">
-                <div className="mb-6">
-                    <h2 className="text-3xl font-bold text-white">Bem-vindo, {userData.displayName}!</h2>
+                <div className="mb-6 flex flex-col items-center">
+                    <Avatar src={userData.photoURL} alt={userData.displayName} size="lg" />
+                    <h2 className="text-3xl font-bold text-white mt-4">Bem-vindo, {userData.displayName}!</h2>
                     <p className="text-2xl font-bold text-yellow-400 mt-2">Saldo: {typeof userData.fichas === 'number' ? userData.fichas : '...'} F</p>
                     <p className="text-lg text-green-400 mt-1">Jogadores Online: {onlinePlayersCount}</p>
                     <p className="text-lg text-gray-300 mt-1">Você tem {myCardCount} cartela(s).</p>

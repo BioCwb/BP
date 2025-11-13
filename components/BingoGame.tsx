@@ -7,12 +7,13 @@ import { BingoCard } from './BingoCard';
 import { calculateCardProgress } from '../utils/bingoUtils';
 import { BingoMasterBoard } from './BingoMasterBoard';
 import { useNotification } from '../context/NotificationContext';
+import { Avatar } from './Avatar';
 
 
 export interface GameState {
     status: 'waiting' | 'running' | 'ended' | 'paused';
     drawnNumbers: number[];
-    players: { [uid: string]: { displayName: string; cardCount: number; progress?: number; } };
+    players: { [uid: string]: { displayName: string; cardCount: number; progress?: number; photoURL?: string; } };
     prizePool: number;
     winners: { uid: string, displayName: string, card: number[] }[];
     host: string | null;
@@ -279,6 +280,51 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
         }
     }, [gameState?.status, gameState?.endGameDelayDuration, gameState?.host, user.uid, onBackToLobby, autoResetGame]);
 
+    // Host Migration: If the host disconnects, another player takes over.
+    useEffect(() => {
+        if (gameState?.status !== 'running' || isSpectator) return;
+
+        const checkHostInterval = setInterval(async () => {
+            const gameDoc = await gameDocRef.get();
+            if (!gameDoc.exists) return;
+            const currentGameState = gameDoc.data() as GameState;
+
+            const hostId = currentGameState.host;
+            if (!hostId || currentGameState.status !== 'running' || hostId === user.uid) {
+                return;
+            }
+            
+            const isHostOffline = playerStatuses[hostId] === 'offline';
+
+            if (isHostOffline) {
+                const onlinePlayerIds = Object.keys(playerStatuses).filter(
+                    (uid) => playerStatuses[uid] === 'online'
+                );
+                if (onlinePlayerIds.length === 0) return;
+
+                onlinePlayerIds.sort();
+                const newHostId = onlinePlayerIds[0];
+
+                if (newHostId === user.uid) {
+                    try {
+                        await db.runTransaction(async (transaction) => {
+                            const freshGameDoc = await transaction.get(gameDocRef);
+                            const latestGameState = freshGameDoc.data() as GameState;
+                            if (latestGameState.host === hostId) {
+                                transaction.update(gameDocRef, { host: newHostId });
+                                showNotification('O anfitrião anterior se desconectou. Assumindo o controle do jogo.', 'info');
+                            }
+                        });
+                    } catch (error) {
+                        console.error("Host takeover transaction failed:", error);
+                    }
+                }
+            }
+        }, 15000); // Check every 15 seconds
+
+        return () => clearInterval(checkHostInterval);
+    }, [gameState?.status, gameState?.host, playerStatuses, user.uid, gameDocRef, showNotification, isSpectator]);
+
     // Main game loop - ONLY RUNS FOR THE HOST
     useEffect(() => {
         if (!gameState || gameState.host !== user.uid || gameState.status !== 'running' || !isTabVisible) {
@@ -400,7 +446,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
     
     const sortedPlayers = useMemo(() => {
         if (!gameState || !gameState.players) return [];
-        return (Object.entries(gameState.players) as [string, { displayName: string, cardCount: number, progress?: number }][])
+        return (Object.entries(gameState.players) as [string, { displayName: string; cardCount: number; progress?: number; photoURL?: string; }][])
             .sort(([, a], [, b]) => {
                 const progressA = a.progress ?? 99;
                 const progressB = b.progress ?? 99;
@@ -541,8 +587,8 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                                     <ul className="space-y-2">
                                         {sortedPlayers.map(([uid, player]) => (
                                             <li key={uid} className={`flex justify-between items-center p-2 rounded-md transition-colors duration-300 ${uid === user.uid && !isSpectator ? 'bg-purple-800' : 'bg-gray-700'}`}>
-                                                <div className="flex items-center flex-1 min-w-0">
-                                                    <span className={`w-3 h-3 rounded-full mr-2 flex-shrink-0 ${playerStatuses[uid] === 'online' ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                                                <div className="flex items-center flex-1 min-w-0 gap-3">
+                                                    <Avatar src={player.photoURL} alt={player.displayName} size="sm" online={playerStatuses[uid] === 'online'} />
                                                     <div className="flex-1 min-w-0">
                                                       <p className="font-semibold text-white truncate" title={player.displayName}>
                                                           {player.displayName}
