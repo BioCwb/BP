@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import firebase from 'firebase/compat/app';
 import { type UserData } from '../App';
 import { db, increment, serverTimestamp, FieldPath } from '../firebase/config';
-// FIX: Removed unused v9 firestore imports to align with the v8 compatibility syntax.
 import { BingoCard } from './BingoCard';
 import { calculateCardProgress } from '../utils/bingoUtils';
 import { BingoMasterBoard } from './BingoMasterBoard';
@@ -465,8 +464,6 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
 
     const renderCards = () => {
         if (isSpectator) {
-            // FIX: The type of `playerData` was inferred as `unknown`.
-            // Casting the result of `Object.entries` to a typed array resolves the error.
             return (Object.entries(allPlayerCards) as [string, { displayName: string, cards: BingoCardData[] }][]).map(([uid, playerData]) => (
                 <div key={uid}>
                     <h3 className="text-lg font-bold text-center text-yellow-300 my-2 sticky top-0 bg-gray-800 py-1 z-10">{playerData.displayName}'s Cards ({playerData.cards.length})</h3>

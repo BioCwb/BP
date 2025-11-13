@@ -1,7 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { auth, googleProvider, db, serverTimestamp, rtdb } from './firebase/config';
-// FIX: Removed firebase v9 modular imports as they are not compatible with the project setup, causing "no exported member" errors.
-// The functions are now called using the v8 syntax (e.g., auth.onAuthStateChanged).
 import type firebase from 'firebase/compat/app';
 import { AuthForm } from './components/AuthForm';
 import { InputField } from './components/InputField';
@@ -34,8 +32,6 @@ export interface UserData {
   photoURL?: string;
 }
 
-// FIX: Moved TabButton component outside of the App component to prevent re-definition on each render
-// and to resolve a potential TypeScript type inference issue causing the 'children' prop error.
 interface TabButtonProps {
   mode: AuthMode;
   currentMode: AuthMode;
@@ -68,7 +64,6 @@ export default function App() {
   const [registerUsername, setRegisterUsername] = useState('');
   const [registerEmail, setRegisterEmail] = useState('');
   const [registerPassword, setRegisterPassword] = useState('');
-  // FIX: Renamed the state setter from setRegisterPassword to setRegisterConfirmPassword to avoid redeclaring the same variable.
   const [registerConfirmPassword, setRegisterConfirmPassword] = useState('');
   
   // Forgot Password State
@@ -89,16 +84,12 @@ export default function App() {
 
 
   useEffect(() => {
-    // FIX: Switched from v9 onAuthStateChanged(auth, ...) to v8 auth.onAuthStateChanged(...)
     const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
       if (user && (user.emailVerified || user.providerData.some(p => p.providerId !== 'password'))) {
         setCurrentUser(user);
         
-        // FIX: Switched from v9 doc(db, ...) to v8 db.collection(...).doc(...)
         const userDocRef = db.collection("users").doc(user.uid);
-        // FIX: Switched from v9 getDoc(...) to v8 userDocRef.get()
         const docSnap = await userDocRef.get();
-        // FIX: Switched from v9 docSnap.exists() to v8 docSnap.exists
         if (!docSnap.exists) {
              const newUserData: UserData = {
                 displayName: user.displayName || 'BingoPlayer',
@@ -110,7 +101,6 @@ export default function App() {
                 totalWinnings: 0,
             };
             const { photoURL, ...firestoreData } = newUserData;
-            // FIX: Switched from v9 setDoc(...) to v8 userDocRef.set(...)
             await userDocRef.set(firestoreData);
             await rtdb.ref(`users/${user.uid}`).set({ photoURL });
         }
@@ -131,7 +121,6 @@ export default function App() {
     if (auth.currentUser) {
       await db.collection('player_status').doc(auth.currentUser.uid).delete().catch(err => console.error("Failed to clear player status on logout:", err));
     }
-    // FIX: Switched from v9 signOut(auth) to v8 auth.signOut()
     await auth.signOut();
   };
 
@@ -190,11 +179,9 @@ export default function App() {
       return;
     }
     try {
-      // FIX: Switched from v9 signInWithEmailAndPassword(auth, ...) to v8 auth.signInWithEmailAndPassword(...)
       const userCredential = await auth.signInWithEmailAndPassword(loginEmail, loginPassword);
       if (userCredential.user && !userCredential.user.emailVerified) {
         setNeedsVerification(userCredential.user);
-        // FIX: Switched from v9 signOut(auth) to v8 auth.signOut()
         await auth.signOut();
       }
     } catch (err: any) {
@@ -226,7 +213,6 @@ export default function App() {
     setNeedsVerification(null);
     setShowVerificationMessage(false);
     try {
-        // FIX: Switched from v9 signInWithPopup(auth, ...) to v8 auth.signInWithPopup(...)
         await auth.signInWithPopup(googleProvider);
     } catch (err: any) {
         if (err.code !== 'auth/popup-closed-by-user') {
@@ -247,12 +233,10 @@ export default function App() {
       return;
     }
     try {
-      // FIX: Switched from v9 createUserWithEmailAndPassword(auth, ...) to v8 auth.createUserWithEmailAndPassword(...)
       const userCredential = await auth.createUserWithEmailAndPassword(registerEmail, registerPassword);
       const user = userCredential.user;
       
       if (user) {
-        // FIX: Switched from v9 updateProfile(user, ...) to v8 user.updateProfile(...)
         await user.updateProfile({ displayName: registerUsername });
         
         const newUserData: UserData = {
@@ -265,15 +249,12 @@ export default function App() {
           totalWinnings: 0,
         };
         const { photoURL, ...firestoreData } = newUserData;
-        // FIX: Switched from v9 setDoc(doc(db,...),...) to v8 db.collection(...).doc(...).set(...)
         await db.collection("users").doc(user.uid).set(firestoreData);
         await rtdb.ref(`users/${user.uid}`).set({ photoURL });
         
-        // FIX: Switched from v9 sendEmailVerification(user) to v8 user.sendEmailVerification()
         await user.sendEmailVerification();
       }
       
-      // FIX: Switched from v9 signOut(auth) to v8 auth.signOut()
       await auth.signOut();
       
       setShowVerificationMessage(true);
@@ -303,7 +284,6 @@ export default function App() {
   const handleResendVerification = async () => {
     if (!needsVerification) return;
     try {
-        // FIX: Switched from v9 sendEmailVerification(user) to v8 user.sendEmailVerification()
         await needsVerification.sendEmailVerification();
         setResendStatus('sent');
     } catch (error) {
@@ -373,7 +353,6 @@ export default function App() {
           <InputField id="register-username" label="Nome de usuário" type="text" value={registerUsername} onChange={(e) => setRegisterUsername(e.target.value)} placeholder="Escolha um nome de usuário" icon={<UserIcon />} />
           <InputField id="register-email" label="E-mail" type="email" value={registerEmail} onChange={(e) => setRegisterEmail(e.target.value)} placeholder="Digite seu e-mail" icon={<EmailIcon />} />
           <InputField id="register-password" label="Senha" type="password" value={registerPassword} onChange={(e) => setRegisterPassword(e.target.value)} placeholder="Crie uma senha" icon={<LockIcon />} />
-          {/* FIX: Used the correct state setter 'setRegisterConfirmPassword' for the confirm password field. */}
           <InputField id="register-confirm-password" label="Confirmar Senha" type="password" value={registerConfirmPassword} onChange={(e) => setRegisterConfirmPassword(e.target.value)} placeholder="Confirme sua senha" icon={<LockIcon />} />
         </AuthForm>
       );
@@ -451,7 +430,7 @@ export default function App() {
         )}
         {renderContent()}
         <footer className="fixed bottom-0 right-0 p-2 text-xs text-gray-500">
-            Versão: 1.0.21
+            Versão: 1.0.22
         </footer>
     </div>
   );

@@ -1,6 +1,5 @@
 import React, { useState, useRef } from 'react';
 import { auth, EmailAuthProvider, db, storage, rtdb } from '../firebase/config';
-// FIX: Removed v9 modular auth imports to switch to v8 compat syntax.
 import type firebase from 'firebase/compat/app';
 import { InputField } from './InputField';
 import { UserIcon } from './icons/UserIcon';
@@ -66,7 +65,6 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, user
     setIsUploading(true);
 
     try {
-        // FIX: Switched from v9 `storage()` to v8 `storage.ref()` to match project's Firebase version.
         const storageRef = storage.ref(`profile_pictures/${auth.currentUser.uid}`);
         const uploadTask = await storageRef.put(selectedFile);
         const downloadURL = await uploadTask.ref.getDownloadURL();
@@ -97,7 +95,6 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, user
     if (!auth.currentUser) return;
 
     try {
-      // FIX: Switched from v9 updateProfile(user, ...) to v8 user.updateProfile(...)
       await auth.currentUser.updateProfile({ displayName });
       const userDocRef = db.collection('users').doc(auth.currentUser.uid);
       await userDocRef.update({ displayName });
@@ -125,9 +122,7 @@ export const ProfileManagement: React.FC<ProfileManagementProps> = ({ user, user
 
     try {
       const credential = EmailAuthProvider.credential(auth.currentUser.email, currentPassword);
-      // FIX: Switched from v9 reauthenticateWithCredential(user, ...) to v8 user.reauthenticateWithCredential(...)
       await auth.currentUser.reauthenticateWithCredential(credential);
-      // FIX: Switched from v9 updatePassword(user, ...) to v8 user.updatePassword(...)
       await auth.currentUser.updatePassword(newPassword);
 
       showNotification('Senha alterada com sucesso!', 'success');
