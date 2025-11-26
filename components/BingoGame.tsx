@@ -60,7 +60,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
     const [allPlayerCards, setAllPlayerCards] = useState<{[uid: string]: {displayName: string, cards: BingoCardData[]}}>({});
     const lastSeenTimestampsRef = useRef<{ [uid: string]: number }>({});
     const [showGameStartedMessage, setShowGameStartedMessage] = useState(false);
-    const prevStatusRef = useRef<GameState['status'] | undefined>();
+    const prevStatusRef = useRef<GameState['status'] | undefined>(undefined);
     const isGameLoopRunning = useRef(false);
     const [isTabVisible, setIsTabVisible] = useState(() => document.visibilityState === 'visible');
 

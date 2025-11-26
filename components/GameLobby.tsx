@@ -8,6 +8,8 @@ import { useNotification } from '../context/NotificationContext';
 import { CoinIcon } from './icons/CoinIcon';
 import { PurchaseFichasModal } from './PurchaseFichasModal';
 import { Avatar } from './Avatar';
+import { InfoIcon } from './icons/InfoIcon';
+import { HowToPlayModal } from './HowToPlayModal';
 
 interface GameLobbyProps {
   user: firebase.User;
@@ -58,6 +60,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
   const [gameHistory, setGameHistory] = useState<GameHistoryItem[]>([]);
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
+  const [isHowToPlayOpen, setIsHowToPlayOpen] = useState(false);
 
   const gameDocRef = useMemo(() => db.collection('games').doc('active_game'), []);
   const myCardsCollectionRef = useMemo(() => db.collection('player_cards').doc(user.uid).collection('cards').doc('active_game'), [user.uid]);
@@ -351,6 +354,15 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
                      >
                         {isClaimingBonus ? 'Resgatando...' : (isBonusAvailable ? 'Resgatar Bônus Diário (10 F)' : `Próximo bônus em ${bonusCooldown}`)}
                     </button>
+
+                    <button
+                        onClick={() => setIsHowToPlayOpen(true)}
+                        className="w-full py-3 px-4 bg-gray-600 hover:bg-gray-500 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-opacity-50 flex items-center justify-center gap-2"
+                    >
+                        <InfoIcon className="w-5 h-5" />
+                        Como Jogar
+                    </button>
+
                      <button
                         onClick={onManageProfile}
                         className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-opacity-50"
@@ -454,6 +466,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
             </form>
         </div>
         <PurchaseFichasModal isOpen={isPurchaseModalOpen} onClose={() => setIsPurchaseModalOpen(false)} />
+        <HowToPlayModal isOpen={isHowToPlayOpen} onClose={() => setIsHowToPlayOpen(false)} />
     </div>
   );
 };
