@@ -457,6 +457,20 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                 return cardCountB - cardCountA;
             });
     }, [gameState]);
+
+    const recentDrawnNumbers = useMemo(() => {
+        if (!gameState) return [];
+        // Chronological order: Oldest -> Newest of the last 15
+        return gameState.drawnNumbers.slice(-15);
+    }, [gameState?.drawnNumbers]);
+
+    const getBallColorClass = (num: number) => {
+        if (num <= 12) return 'bg-red-600 text-white border-red-800';
+        if (num <= 24) return 'bg-blue-600 text-white border-blue-800';
+        if (num <= 36) return 'bg-purple-600 text-white border-purple-800';
+        if (num <= 48) return 'bg-green-600 text-white border-green-800';
+        return 'bg-yellow-400 text-black border-yellow-600';
+    };
     
     if (!gameState) return <div className="text-center text-xl w-full h-screen flex items-center justify-center">Carregando Jogo de Bingo...</div>;
 
@@ -606,6 +620,26 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                                 ) : (
                                     <p className="text-gray-400 text-center italic mt-4">Nenhum jogador no jogo.</p>
                                 )}
+                            </div>
+                        </div>
+                    )}
+                    
+                    {gameState.drawnNumbers.length > 0 && (
+                        <div className="mt-6 pt-4 border-t border-gray-700">
+                            <h3 className="text-sm font-bold text-gray-400 mb-3 text-center uppercase tracking-wider">Histórico (Últimos 15)</h3>
+                            <div className="flex flex-wrap gap-2 justify-center items-center">
+                                {recentDrawnNumbers.map((num, i) => {
+                                    const isMostRecent = i === recentDrawnNumbers.length - 1;
+                                    return (
+                                     <div 
+                                        key={num} 
+                                        className={`rounded-full flex items-center justify-center font-bold text-sm shadow-md border-2 transition-transform duration-300 ${getBallColorClass(num)} ${isMostRecent ? 'w-10 h-10 scale-110 ring-2 ring-white z-10' : 'w-8 h-8 opacity-80'}`}
+                                        title={isMostRecent ? "Último Sorteado" : `Sorteado há ${recentDrawnNumbers.length - 1 - i} turnos`}
+                                    >
+                                        {num}
+                                    </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
