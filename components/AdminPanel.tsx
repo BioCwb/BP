@@ -138,6 +138,10 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
     const [clearAllError, setClearAllError] = useState<string | null>(null);
     const [isClearingCards, setIsClearingCards] = useState(false);
 
+    // State for Chat Message Deletion Modal
+    const [messageToDelete, setMessageToDelete] = useState<ChatMessage | null>(null);
+    const [isDeletingMessage, setIsDeletingMessage] = useState(false);
+
     const gameDocRef = useMemo(() => db.collection('games').doc('active_game'), []);
     const purchaseHistoryCollectionRef = useMemo(() => db.collection('purchase_history'), []);
     const chatCollectionRef = useMemo(() => db.collection('chat'), []);
@@ -457,40 +461,49 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
         showNotification('Chave Pix copiada para a área de transferência!', 'success');
     };
 
-    const handleDeleteChatMessage = async (message: ChatMessage) => {
+    const handleDeleteChatMessage = (message: ChatMessage) => {
+        setMessageToDelete(message);
+    };
+
+    const confirmDeleteMessage = async () => {
+        if (!messageToDelete) return;
+        
         const adminUser = auth.currentUser;
         if (!adminUser) {
             showNotification('Administrador não autenticado. Por favor, faça login novamente.', 'error');
             return;
         }
 
-        if (window.confirm(`Tem certeza de que deseja apagar a mensagem de "${message.displayName}"?\n\n"${message.text}"`)) {
-            try {
-                const batch = db.batch();
-                const chatDocRef = db.collection('chat').doc(message.id);
-                const adminLogRef = db.collection('admin_logs').doc();
+        setIsDeletingMessage(true);
 
-                batch.delete(chatDocRef);
+        try {
+            const batch = db.batch();
+            const chatDocRef = db.collection('chat').doc(messageToDelete.id);
+            const adminLogRef = db.collection('admin_logs').doc();
 
-                batch.set(adminLogRef, {
-                    adminUid: adminUser.uid,
-                    adminName: adminUser.displayName || 'Admin',
-                    action: 'delete_chat_message',
-                    details: {
-                        deletedMessageId: message.id,
-                        deletedMessageText: message.text,
-                        deletedMessageAuthorUid: message.uid,
-                        deletedMessageAuthorName: message.displayName,
-                    },
-                    timestamp: serverTimestamp(),
-                });
+            batch.delete(chatDocRef);
 
-                await batch.commit();
-                showNotification('Mensagem apagada com sucesso.', 'success');
-            } catch (error) {
-                console.error("Error deleting chat message:", error);
-                showNotification('Falha ao apagar a mensagem.', 'error');
-            }
+            batch.set(adminLogRef, {
+                adminUid: adminUser.uid,
+                adminName: adminUser.displayName || 'Admin',
+                action: 'delete_chat_message',
+                details: {
+                    deletedMessageId: messageToDelete.id,
+                    deletedMessageText: messageToDelete.text,
+                    deletedMessageAuthorUid: messageToDelete.uid,
+                    deletedMessageAuthorName: messageToDelete.displayName,
+                },
+                timestamp: serverTimestamp(),
+            });
+
+            await batch.commit();
+            showNotification('Mensagem apagada com sucesso.', 'success');
+            setMessageToDelete(null);
+        } catch (error) {
+            console.error("Error deleting chat message:", error);
+            showNotification('Falha ao apagar a mensagem.', 'error');
+        } finally {
+            setIsDeletingMessage(false);
         }
     };
 
@@ -1628,6 +1641,34 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ user, onBack }) => {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+            {messageToDelete && (
+                 <div className="fixed inset-0 bg-black bg-opacity-80 flex items-center justify-center z-50 p-4">
+                    <div className="bg-gray-800 rounded-lg shadow-xl p-6 w-full max-w-md text-white border border-gray-700">
+                        <h3 className="text-xl font-bold text-white mb-4">Confirmar Exclusão</h3>
+                        <p className="text-gray-300 mb-2">Tem certeza de que deseja apagar a seguinte mensagem?</p>
+                        <div className="bg-gray-700 p-3 rounded-lg mb-4">
+                            <p className="text-sm font-semibold text-purple-300 mb-1">{messageToDelete.displayName}</p>
+                            <p className="text-white italic">"{messageToDelete.text}"</p>
+                        </div>
+                        <div className="flex justify-end gap-3">
+                            <button 
+                                onClick={() => setMessageToDelete(null)}
+                                className="py-2 px-4 bg-gray-600 hover:bg-gray-500 rounded-lg font-semibold"
+                                disabled={isDeletingMessage}
+                            >
+                                Cancelar
+                            </button>
+                            <button 
+                                onClick={confirmDeleteMessage}
+                                className="py-2 px-4 bg-red-600 hover:bg-red-700 rounded-lg font-semibold flex items-center"
+                                disabled={isDeletingMessage}
+                            >
+                                {isDeletingMessage ? 'Apagando...' : 'Excluir Mensagem'}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

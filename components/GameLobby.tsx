@@ -61,6 +61,7 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
   const [expandedHistoryId, setExpandedHistoryId] = useState<string | null>(null);
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
   const [isHowToPlayOpen, setIsHowToPlayOpen] = useState(false);
+  const [requestStatusCooldown, setRequestStatusCooldown] = useState(false);
 
   const gameDocRef = useMemo(() => db.collection('games').doc('active_game'), []);
   const myCardsCollectionRef = useMemo(() => db.collection('player_cards').doc(user.uid).collection('cards').doc('active_game'), [user.uid]);
@@ -299,6 +300,30 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
     }
   };
 
+  const handleRequestGameStatus = async () => {
+    if (gameState?.status !== 'waiting') {
+        showNotification('O jogo já começou ou não está em espera.', 'info');
+        return;
+    }
+    if (requestStatusCooldown) return;
+    
+    setRequestStatusCooldown(true);
+    try {
+        await chatCollectionRef.add({
+            uid: user.uid,
+            displayName: userData.displayName,
+            text: "📢 ADMIN, PODEMOS INICIAR? Estamos prontos para jogar! 🎱",
+            timestamp: serverTimestamp()
+        });
+        showNotification('Solicitação enviada ao chat!', 'success');
+        setTimeout(() => setRequestStatusCooldown(false), 30000);
+    } catch (error) {
+        console.error("Error sending request:", error);
+        showNotification("Erro ao enviar solicitação.", 'error');
+        setRequestStatusCooldown(false);
+    }
+  };
+
   const canBuyCard = gameState?.status === 'waiting' && !isBuying;
 
   return (
@@ -362,6 +387,16 @@ export const GameLobby: React.FC<GameLobbyProps> = ({ user, userData, onPlay, on
                         <InfoIcon className="w-5 h-5" />
                         Como Jogar
                     </button>
+                    
+                    {gameState?.status === 'waiting' && (
+                        <button
+                            onClick={handleRequestGameStatus}
+                            disabled={requestStatusCooldown}
+                            className="w-full py-3 px-4 bg-orange-600 hover:bg-orange-700 rounded-lg text-white font-semibold transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:ring-opacity-50 disabled:bg-gray-600 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                            {requestStatusCooldown ? 'Solicitação Enviada ⏳' : '📢 Pedir Status do Jogo'}
+                        </button>
+                    )}
 
                      <button
                         onClick={onManageProfile}

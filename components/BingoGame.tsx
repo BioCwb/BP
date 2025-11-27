@@ -633,7 +633,7 @@ export const BingoGame: React.FC<BingoGameProps> = ({ user, userData, onBackToLo
                                     return (
                                      <div 
                                         key={num} 
-                                        className={`rounded-full flex items-center justify-center font-bold text-sm shadow-md border-2 transition-transform duration-300 ${getBallColorClass(num)} ${isMostRecent ? 'w-10 h-10 scale-110 ring-2 ring-white z-10' : 'w-8 h-8 opacity-80'}`}
+                                        className={`rounded-full flex items-center justify-center font-bold text-sm shadow-md border-2 transition-transform duration-300 ${getBallColorClass(num)} ${isMostRecent ? 'w-10 h-10 ring-2 ring-white z-10 last-number-animation' : 'w-8 h-8 opacity-80'}`}
                                         title={isMostRecent ? "Último Sorteado" : `Sorteado há ${recentDrawnNumbers.length - 1 - i} turnos`}
                                     >
                                         {num}
